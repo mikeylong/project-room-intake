@@ -1,6 +1,6 @@
 # Project Room Intake
 
-Project Room Intake helps Codex get the right source material in place before it starts writing.
+Project Room Intake helps get the right source material in place before writing starts.
 
 It is useful when the work depends on more than one file, folder, export, transcript, or shared source. Instead of jumping straight into a memo, PRD, audit, report, or research brief, the skill creates a short intake step: what sources exist, which ones look useful, what may be stale or duplicated, and what still seems missing.
 
@@ -49,7 +49,7 @@ After discovery, it gives the user a reviewable set of artifacts:
 - Notes about missing context.
 - A clear next step: approve sources, add more locations, or stop.
 
-Only after that review should Codex use the material for synthesis or drafting.
+Only after that review should the material be used for synthesis or drafting.
 
 ## What You Get
 
@@ -80,7 +80,7 @@ Another example:
 Use project-room-intake for a PRD on onboarding improvements. Look in ~/Research/Onboarding and ~/Product/Plans. I want to review the source list before you write anything.
 ```
 
-The important part is giving Codex a bounded place to look. The skill is intentionally cautious about broad searches.
+The important part is giving the skill a bounded place to look. It is intentionally cautious about broad searches.
 
 ## Why The Review Step Matters
 
