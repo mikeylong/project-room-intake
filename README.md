@@ -66,18 +66,20 @@ After approval, the skill can create a project room with:
 
 Those files make it easier to see what the work is based on, what may be in tension, and what should still be checked.
 
-## How To Ask For It
+## Invocation Examples
 
-Example:
+These examples are plain requests. They do not depend on a specific app or platform.
 
 ```text
-Set up a project room for a board memo from ~/Deals/Acme and this Drive export manifest. Do not draft yet.
+Set up a project room for a board memo using the files in [project folder] and the attached source manifest. Do not draft yet.
 ```
 
-Another example:
+```text
+Use project-room-intake for a PRD on onboarding improvements. Look in [research folder] and [planning folder]. I want to review the source list before you write anything.
+```
 
 ```text
-Use project-room-intake for a PRD on onboarding improvements. Look in ~/Research/Onboarding and ~/Product/Plans. I want to review the source list before you write anything.
+Create a project room for an audit of [topic]. Use only the approved folders I provide, flag duplicates or stale files, and pause before writing the final report.
 ```
 
 The important part is giving the skill a bounded place to look. It is intentionally cautious about broad searches.
