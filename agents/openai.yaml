@@ -1,0 +1,7 @@
+interface:
+  display_name: "Project Room Intake"
+  short_description: "Source discovery and data-room kickoff"
+  brand_color: "#4D8CFF"
+  default_prompt: "Use $project-room-intake to set up a bounded project room from these approved source locations before drafting."
+policy:
+  allow_implicit_invocation: true
