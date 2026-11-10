@@ -8,9 +8,9 @@ Validated on November 10, 2026, on macOS 27.2, arm64:
 
 | Interpreter | Executed check | Result |
 | --- | --- | --- |
-| Python 3.11.13 | Full unittest suite, including scanner, review CLI, and trial CLI subprocess cases | 89 passed |
-| Python 3.12.14 | Same suite | 89 passed |
-| Python 3.14.7 | Same suite | 89 passed |
+| Python 3.11.13 | Full unittest suite, including scanner, review CLI, trial CLI, smoke lifecycle, and access-guard cases | 107 passed |
+| Python 3.12.14 | Same suite | 107 passed |
+| Python 3.14.7 | Same suite | 107 passed |
 
 Reproduce from the repository with each selected interpreter:
 
@@ -21,6 +21,12 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -v
 The source uses Python 3.10+ syntax and POSIX APIs, including `fcntl`, `pwd`, directory descriptors, and no-follow filesystem operations. Python 3.10, other interpreter versions, Linux, and other macOS versions/architectures have not been validated by this record. Native Windows is unsupported. No browser behavior is involved in these checks.
 
 These tests establish specific boundaries, review persistence, publication/refusal behavior, and scoring calculations. They are not measurements of real-world source recall, user effort, writing quality, or trust.
+
+## Repeatable smoke check
+
+The [smoke-test guide](smoke-test.md) documents the automated CLI lifecycle check and a staged path for agent room preparation and drafting. Run `scripts/smoke_test.py run --output /path/to/new/local/evidence` to exercise this checkout, or add `--skill-dir` to select an installed copy. Each invocation records its own results and target identities; smoke assertions are reported separately from the unittest counts above.
+
+The harness uses disposable synthetic sources and scripted approvals. Its scanner access evidence covers selected Python APIs, not OS-level tracing or the agent's own reads. The automated path checks CLI mechanics; the staged path requires separate agent work and artifact review. Neither establishes human approval quality, improved source recall, or product value. It does not expand the verified platforms or client behavior recorded here.
 
 ## Invocation scope
 
