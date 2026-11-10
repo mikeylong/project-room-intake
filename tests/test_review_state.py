@@ -97,6 +97,43 @@ class ReviewStateTests(unittest.TestCase):
         restored = self.publish()["candidates"][0]
         self.assertEqual(restored["review"]["status"], "approved")
 
+    def test_empty_file_inputs_preserve_older_v2_scope_and_approval(self):
+        legacy_v2 = payload()
+        self.assertNotIn("files", legacy_v2)
+        store.publish_room(self.room, legacy_v2)
+        self.approve(notes="Existing reviewed room")
+        history_before = (self.room / "review_decisions.json").read_bytes()
+        repeated = payload()
+        repeated.update(files=[], roots=["/approved", "/approved"])
+        refreshed = store.publish_room(self.room, repeated)
+        self.assertEqual(refreshed["candidates"][0]["review"]["status"], "approved")
+        self.assertNotIn("files", refreshed["candidates"][0]["observation_scope"])
+        repeated["candidates"] = []
+        missing = store.publish_room(self.room, repeated)["candidates"][0]
+        self.assertEqual(missing["observation_status"], "missing")
+        self.assertEqual((self.room / "review_decisions.json").read_bytes(), history_before)
+
+    def test_exact_file_scope_changes_preserve_historical_provenance(self):
+        first = payload()
+        first.update(roots=[], files=["/approved/src_a", "/approved/src_a"])
+        provenance = [{"kind": "file", "path": "/approved/src_a"}] * 2
+        first["candidates"][0]["discovered_via"] = provenance
+        initial = store.publish_room(self.room, first)
+        self.approve()
+        self.assertEqual(initial["candidates"][0]["discovered_via"], provenance)
+        with (self.room / "candidate_sources.csv").open(newline="") as handle:
+            self.assertEqual(json.loads(next(csv.DictReader(handle))["discovered_via"]), provenance)
+        changed_scope = payload([])
+        changed_scope.update(roots=[], files=["/approved/src_b"])
+        unseen = store.publish_room(self.room, changed_scope)["candidates"][0]
+        self.assertEqual(unseen["observation_status"], "unobserved")
+        self.assertEqual(unseen["discovered_via"], provenance)
+        self.assertEqual(unseen["observation_scope"]["files"], ["/approved/src_a"])
+        first["candidates"] = []
+        missing = store.publish_room(self.room, first)["candidates"][0]
+        self.assertEqual(missing["observation_status"], "missing")
+        self.assertEqual(missing["discovered_via"], provenance)
+
     def test_review_requires_observed_identity_and_explicit_scope(self):
         self.publish()
         with self.assertRaisesRegex(ValueError, "currently observed"):

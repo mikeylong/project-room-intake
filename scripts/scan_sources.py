@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Inventory approved directory roots; content enrichment is explicitly opt-in."""
+"""Inventory approved directories or exact files; content enrichment is opt-in."""
 
 from __future__ import annotations
 
@@ -36,8 +36,9 @@ def absolute_path(value: str | Path) -> Path:
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--root", action="append", required=True, help="Approved directory root. Repeatable.")
-    parser.add_argument("--room", required=True, help="Output room, outside all source roots.")
+    parser.add_argument("--root", action="append", default=[], help="Approved directory root. Repeatable.")
+    parser.add_argument("--file", action="append", default=[], help="Approved exact file, without listing siblings. Repeatable.")
+    parser.add_argument("--room", required=True, help="Output room, separate from source inputs.")
     parser.add_argument("--query", default="", help="Optional relevance hint.")
     parser.add_argument("--include-glob", action="append", default=[])
     parser.add_argument("--exclude-glob", action="append", default=[])
@@ -47,18 +48,22 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--snippets", action=argparse.BooleanOptionalAction, default=False,
                         help="Read up to 8192 bytes for short previews. --no-snippets disables only previews.")
     args = parser.parse_args(argv)
+    if not args.root and not args.file:
+        parser.error("at least one --root or --file is required")
     if args.metadata_only and (args.hash_content or args.snippets):
         parser.error("--metadata-only cannot be combined with --hash-content or --snippets")
     if not math.isfinite(args.hash_max_mb) or args.hash_max_mb < 0:
         parser.error("--hash-max-mb must be a finite, nonnegative number")
-    if any(".." in Path(os.path.expanduser(value)).parts for value in [*args.root, args.room]):
-        parser.error("root and room paths must not contain '..'; name the intended directory directly")
-    args.root = list(dict.fromkeys(str(absolute_path(root)) for root in args.root))
+    if any(".." in Path(os.path.expanduser(value)).parts for value in [*args.root, *args.file, args.room]):
+        parser.error("source and room paths must not contain '..'; name the intended path directly")
+    # Keep every requested occurrence for provenance; candidate rows are deduplicated.
+    args.root = [str(absolute_path(root)) for root in args.root]
+    args.file = [str(absolute_path(path)) for path in args.file]
     args.room = str(absolute_path(args.room))
     room = Path(args.room)
-    for root in map(Path, args.root):
-        if room == root or room in root.parents or root in room.parents:
-            parser.error("room and source roots must not overlap; choose a separate output directory")
+    for source in map(Path, [*args.root, *args.file]):
+        if room == source or room in source.parents or source in room.parents:
+            parser.error("room and source inputs must not overlap; choose a separate output directory")
     return args
 
 
@@ -78,13 +83,41 @@ def matches_any(rel: str, patterns: list[str]) -> bool:
 
 
 def excluded_reason(rel: str, patterns: list[str]) -> str | None:
+    if matches_any(rel, patterns):
+        return "user_exclude"
     if any(part.startswith(".") for part in Path(rel).parts):
         return "hidden"
     if matches_any(rel, DEFAULT_EXCLUDES):
         return "default_exclude"
-    if matches_any(rel, patterns):
-        return "user_exclude"
     return None
+
+
+def user_excluded(path: Path, patterns: list[str], roots: list[str]) -> bool:
+    """User exclusions remain effective across explicit and recursive inputs.
+
+    Check ancestor names without inspecting them: excluding a directory also
+    excludes a named file below it. Root-relative patterns retain their meaning
+    when a file is supplied both ways.
+    """
+    if not patterns:
+        return False
+    containing_roots = [Path(root) for root in roots if Path(root) == path or Path(root) in path.parents]
+    boundary = min(containing_roots, key=lambda root: len(root.parts)) if containing_roots else None
+    paths = []
+    for item in (path, *path.parents):
+        paths.append(item)
+        if item == boundary:
+            break
+    if any(matches_any(str(item), patterns) for item in paths):
+        return True
+    for root in map(Path, roots):
+        if root in path.parents:
+            for item in paths:
+                if item == root:
+                    break
+                if matches_any(item.relative_to(root).as_posix(), patterns):
+                    return True
+    return False
 
 
 def source_id(source_type: str, path: str) -> str:
@@ -208,21 +241,51 @@ def enrich(name: str, parent_fd: int, info: os.stat_result, args: argparse.Names
 
 
 def collect_scan(args: argparse.Namespace) -> dict:
-    records, exclusions, coverage_errors, enrichment_errors, inputs = [], [], [], [], []
+    by_id, exclusions, coverage_errors, enrichment_errors, inputs = {}, [], [], [], []
     terms = query_terms(args.query)
-    for root_text in args.root:
-        root = Path(root_text)
-        outcome = {"root": str(root), "status": "complete", "inspected_count": 0,
+    requested = [("root", path) for path in args.root] + [("file", path) for path in args.file]
+    for input_kind, input_text in requested:
+        source = Path(input_text)
+        root = source if input_kind == "root" else source.parent
+        provenance = {"kind": input_kind, "path": str(source)}
+        outcome = {"root": str(source), **provenance, "status": "complete", "inspected_count": 0,
                    "error_count": 0, "exclusion_count": 0}
 
         def fail(path: Path, operation: str, exc: OSError) -> None:
-            coverage_errors.append(error_record(root, path, operation, exc))
+            coverage_errors.append(error_record(source, path, operation, exc))
             outcome["error_count"] += 1
 
         def exclude(path: Path, reason: str, kind: str) -> None:
-            exclusions.append({"root": str(root), "path": str(path), "relative_path": str(path.relative_to(root)),
+            exclusions.append({"root": str(source), "path": str(path), "relative_path": str(path.relative_to(root)),
                                "reason": reason, "kind": kind})
             outcome["exclusion_count"] += 1
+
+        def observe(path: Path, parent_fd: int, info: os.stat_result) -> None:
+            outcome["inspected_count"] += 1
+            kind = "local_symlink" if stat.S_ISLNK(info.st_mode) else "local_file"
+            identity = source_id(kind, str(path))
+            if identity in by_id:
+                # The first observation remains intact; an overlap adds its input
+                # provenance without repeating content enrichment.
+                by_id[identity]["discovered_via"].append(dict(provenance))
+                return
+            record = {
+                "source_id": identity, "source_type": kind,
+                "root": str(root), "path": str(path), "relative_path": path.relative_to(root).as_posix(), "name": path.name,
+                "extension": path.suffix.lower().lstrip("."), "mime_type": mimetypes.guess_type(path.name)[0] or "",
+                "size_bytes": info.st_size, "modified_at": utc_iso(info.st_mtime),
+                "owner": owner_name(info.st_uid), "mode": stat.filemode(info.st_mode),
+                "provider": None, "version": None,
+                "metadata_token": {"size_bytes": info.st_size, "mtime_ns": info.st_mtime_ns},
+                "duplicate_hint": "", "relevance_score": 0, "relevance_reasons": "",
+                "discovered_via": [dict(provenance)],
+            }
+            enrichment, error = enrich(path.name, parent_fd, info, args)
+            record.update(enrichment)
+            if error is not None:
+                enrichment_errors.append(error_record(source, path, "content_read", error))
+            record["relevance_score"], record["relevance_reasons"] = relevance(record, terms)
+            by_id[identity] = record
 
         def visit(directory: Path, directory_fd: int) -> None:
             # A successful empty listing is coverage; merely opening a root is not.
@@ -236,7 +299,7 @@ def collect_scan(args: argparse.Namespace) -> dict:
             for entry in entries:
                 path = directory / entry.name
                 rel = path.relative_to(root).as_posix()
-                reason = excluded_reason(rel, args.exclude_glob)
+                reason = "user_exclude" if user_excluded(path, args.exclude_glob, args.root) else excluded_reason(rel, [])
                 if reason:
                     # Intentional exclusions need no stat, much less content access.
                     exclude(path, reason, "entry")
@@ -263,31 +326,28 @@ def collect_scan(args: argparse.Namespace) -> dict:
                 if args.include_glob and not matches_any(rel, args.include_glob):
                     exclude(path, "not_included", "entry")
                     continue
-                outcome["inspected_count"] += 1
-                kind = "local_symlink" if stat.S_ISLNK(info.st_mode) else "local_file"
-                record = {
-                    "source_id": source_id(kind, str(path)), "source_type": kind,
-                    "root": str(root), "path": str(path), "relative_path": rel, "name": path.name,
-                    "extension": path.suffix.lower().lstrip("."), "mime_type": mimetypes.guess_type(path.name)[0] or "",
-                    "size_bytes": info.st_size, "modified_at": utc_iso(info.st_mtime),
-                    "owner": owner_name(info.st_uid), "mode": stat.filemode(info.st_mode),
-                    "provider": None, "version": None,
-                    "metadata_token": {"size_bytes": info.st_size, "mtime_ns": info.st_mtime_ns},
-                    "duplicate_hint": "", "relevance_score": 0, "relevance_reasons": "",
-                }
-                enrichment, error = enrich(entry.name, directory_fd, info, args)
-                record.update(enrichment)
-                if error is not None:
-                    enrichment_errors.append(error_record(root, path, "content_read", error))
-                record["relevance_score"], record["relevance_reasons"] = relevance(record, terms)
-                records.append(record)
+                observe(path, directory_fd, info)
 
         root_fd = None
         try:
-            root_fd = open_root(root)
-            visit(root, root_fd)
+            if user_excluded(source, args.exclude_glob, args.root):
+                exclude(source, "user_exclude", "entry")
+            elif input_kind == "file":
+                # Exact authorization bypasses hidden/default filters, never the
+                # user's filters. Filtering needs no filesystem inspection.
+                if args.include_glob and not matches_any(str(source), args.include_glob):
+                    exclude(source, "not_included", "entry")
+                else:
+                    root_fd = open_root(root)
+                    info = os.stat(source.name, dir_fd=root_fd, follow_symlinks=False)
+                    if stat.S_ISDIR(info.st_mode):
+                        raise IsADirectoryError(errno.EISDIR, "--file requires a file; use an authorized --root for directories", str(source))
+                    observe(source, root_fd, info)
+            else:
+                root_fd = open_root(root)
+                visit(root, root_fd)
         except OSError as exc:
-            fail(root, "open_root", exc)
+            fail(source, "inspect_file" if input_kind == "file" else "open_root", exc)
         finally:
             if root_fd is not None:
                 os.close(root_fd)
@@ -295,17 +355,17 @@ def collect_scan(args: argparse.Namespace) -> dict:
             outcome["status"] = "partial" if outcome["inspected_count"] else "failed"
         inputs.append(outcome)
 
-    records = list({record["source_id"]: record for record in records}.values())
+    records = list(by_id.values())
     records.sort(key=lambda record: record["path"])
     add_duplicate_hints(records)
     coverage = "complete"
     if coverage_errors:
-        coverage = "partial" if any(item["inspected_count"] for item in inputs) else "failed"
+        coverage = "partial" if any(item["inspected_count"] or item["status"] == "complete" for item in inputs) else "failed"
     mode = "hash+preview" if args.hash_content and args.snippets else "hash" if args.hash_content else "preview" if args.snippets else "metadata"
     return {
         "schema_version": SCHEMA_VERSION, "scan_id": uuid.uuid4().hex,
         "generated_at": utc_iso(datetime.now(timezone.utc).timestamp()),
-        "roots": list(args.root), "query": args.query,
+        "roots": list(args.root), "files": list(args.file), "query": args.query,
         "filters": {"include": list(args.include_glob), "exclude": list(args.exclude_glob)},
         "content_access": {"mode": mode, "hashes": args.hash_content, "snippets": args.snippets},
         "coverage": {"status": coverage, "inputs": inputs, "errors": coverage_errors},

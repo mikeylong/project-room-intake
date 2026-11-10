@@ -97,9 +97,9 @@ python3 scripts/scan_sources.py \
   --query "board memo"
 ```
 
-This is **metadata-only by default**. It inventories paths and file metadata without opening source contents for hashes or previews. Add `--metadata-only` to make that choice explicit. Symlink entries are inventoried without following their targets; a root with a symlink component is refused. Source roots and the room must not overlap. Name directories directly; paths containing `..` are rejected so normalization cannot hide a symlink boundary.
+This is **metadata-only by default**. It inventories paths and file metadata without opening source contents for hashes or previews. Add `--metadata-only` to make that choice explicit. Symlink entries are inventoried without following their targets; a root with a symlink component is refused. Source roots and the room must not overlap. Name inputs directly; paths containing `..` are rejected so normalization cannot hide a symlink boundary.
 
-Hashing and previews read source contents and are separate opt-ins. Use them only when those operations are authorized for the selected roots:
+Hashing and previews read source contents and are separate opt-ins. Use them only when those operations are authorized for the selected inputs:
 
 ```sh
 python3 scripts/scan_sources.py \
@@ -110,9 +110,32 @@ python3 scripts/scan_sources.py \
 
 `--hash-content` and `--snippets` can be used independently. `--metadata-only` conflicts with either opt-in. `--no-snippets` disables previews only; it does not cancel `--hash-content`. This changes the earlier default, which read files for hashes and snippets. Metadata-only relevance uses names and paths; local content duplicates cannot be established from size and timestamps alone. Content-addressed provider identities can still support documented metadata hints in a separate connector manifest.
 
-Repeat `--root` for multiple approved directories. Include globs narrow discovery but do not override hidden/default exclusions. The scanner does not accept individual-file inputs or import connector manifests. A named file does not authorize a scan of its parent directory.
+Use `--file` when approval covers an exact file rather than a directory:
 
-Read `scan_summary.md` and `candidate_sources.json` together. Discovery is reported as `complete`, `partial`, or `failed`, with per-input outcomes and errors. Optional hashing/preview failures are recorded separately from coverage. Exit codes are:
+```sh
+python3 scripts/scan_sources.py \
+  --room /path/to/project-room \
+  --file /path/to/approved/notes.md \
+  --file /path/to/approved/.hidden-evidence.json \
+  --metadata-only
+```
+
+Repeat or combine `--root` and `--file`; at least one input is required. Exact-file intake inspects only the named entry, without enumerating or inspecting siblings. A directory selected through `--file` is an input error and is not recursively scanned. A symlink selected through `--file` is inventoried as a link without reading its target; a symlink in an ancestor path is rejected. File approval never grants access to the parent directory's other contents.
+
+Exclusion rules depend on the input route:
+
+| Input | Hidden/default exclusions | User filters |
+| --- | --- | --- |
+| Recursive `--root` | Apply to descendants; an include glob cannot restore excluded entries. An explicitly named hidden root itself may be entered. | Includes match root-relative paths or basenames. User exclusions apply to the input and its descendants. |
+| Exact `--file` | Do not hide an explicitly named file, including a file beneath a normally excluded directory. | Includes match its absolute path or basename. User exclusions still win. |
+
+User exclusions match absolute paths/basenames and ancestor paths/names. Within declared roots, ancestor matching stops at the outermost containing root; ancestors above it do not affect the result. Patterns also match paths relative to any containing root. An exact file outside every declared root uses its full ancestor chain. A user-excluded root is skipped before it is opened.
+
+An explicit file never bypasses a user exclusion. For example, excluding `private` or `private/*` beneath a declared root still excludes `private/note.md` when it is also named with `--file`, while `/private` above that root does not exclude the whole scan. Naming a file inside `.cache` bypasses the default exclusion, but an explicit `--exclude-glob .cache` still excludes it within the matching boundary above.
+
+The scanner keeps one candidate per source and records all successful input routes in `discovered_via`, including repeated inputs and root/file overlap. Every supplied input has its own coverage outcome. The scanner does not import connector manifests.
+
+Read `scan_summary.md` and `candidate_sources.json` together. Discovery is `complete` when every input was inspected or intentionally excluded without a coverage error; an accessible empty root and an all-excluded input set can be complete. It is `partial` when some input scope was inspected or intentionally excluded while discovery errors prevented complete coverage. It is `failed` when no input completed and errors prevented all inspection. Per-input outcomes identify the input kind and path. Optional hashing/preview failures are recorded separately from coverage. Exit codes are:
 
 | Code | Meaning |
 | --- | --- |
@@ -156,6 +179,8 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -v
 ```
 
 These tests check bounded discovery and preservation behavior. They do not establish improved source recall, writing quality, or user trust in real projects.
+
+[Contract examples](tests/fixtures/contracts/candidates.json) cover local files, symlinks, unretrieved/retrieved connector metadata, and partial discovery. [Manual approval scenarios](tests/approval_scenarios.md) provide reusable requests and decision criteria for evaluating the skill's approval behavior separately from scanner correctness.
 
 ## Why The Review Step Matters
 
