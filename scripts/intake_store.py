@@ -439,12 +439,18 @@ def publish_room(room: Path, payload: dict) -> dict:
 
 
 def record_review(room: Path, source_id: str, decision: str, scope: str, actor: str,
-                  notes: str | None = None, classification: str | None = None) -> dict:
+                  notes: str | None = None, classification: str | None = None, *,
+                  expected_revision: dict | None = None) -> dict:
     """Append an explicit decision and republish its generated candidate view."""
     if not _choice(decision, DECISIONS) or not _choice(scope, {"snapshot", "source"}) or not isinstance(actor, str) or not actor.strip():
         raise ValueError("Explicit decision, scope, and nonempty actor are required")
     if notes is not None and not isinstance(notes, str) or classification is not None and not isinstance(classification, str):
         raise ValueError("Review notes and classification must be text")
+    expected_revision = copy.deepcopy(expected_revision)
+    if scope == "snapshot" and not _verified_revision(expected_revision):
+        raise ValueError("Snapshot review requires an expected verified revision from the reviewed candidate")
+    if scope == "source" and expected_revision is not None:
+        raise ValueError("Expected revision is only valid for snapshot scope")
     room = Path(room)
     with _locked(room):
         current = _current(room)
@@ -456,10 +462,12 @@ def record_review(room: Path, source_id: str, decision: str, scope: str, actor: 
             raise ValueError("Review requires a currently observed source")
         if scope == "snapshot" and not _verified_revision(candidate.get("revision")):
             raise ValueError("Snapshot review requires a verified revision; explicitly use source scope only when intended")
+        if scope == "snapshot" and candidate["revision"] != expected_revision:
+            raise ValueError("Current revision differs from the expected reviewed revision; review the changed candidate before deciding")
         reviews = _load_reviews(room)
         prior = next((d for d in reversed(reviews["decisions"]) if d["source_id"] == source_id), {})
         entry = {"decision_id": uuid.uuid4().hex, "source_id": source_id, "decision": decision, "scope": scope,
-                 "revision": candidate["revision"] if scope == "snapshot" else None, "actor": actor,
+                 "revision": expected_revision if scope == "snapshot" else None, "actor": actor,
                  "notes": notes if notes is not None else prior.get("notes", ""),
                  "classification": classification if classification is not None else prior.get("classification"), "recorded_at": _now()}
         reviews["decisions"].append(entry)

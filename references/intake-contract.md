@@ -73,17 +73,17 @@ Exit codes: `0` means complete discovery with published artifacts; `3` means par
 
 ## Durable Review Decisions
 
-Use `scripts/review_sources.py` to record explicit user decisions. It requires `--room`, `--source-id`, `--decision approved|excluded|deferred`, `--scope snapshot|source`, and `--actor`; `--notes` and `--classification` are optional free text. It records the decision; it does not obtain authorization from the user or grant itself permission to read sources. The source must be present as currently observed in a published v2 room.
+Use `scripts/review_sources.py` to record explicit user decisions. It requires `--room`, `--source-id`, `--decision approved|excluded|deferred`, `--scope snapshot|source`, and `--actor`; `--notes` and `--classification` are optional free text. Snapshot scope additionally requires `--expected-sha256 HASH`; that flag is rejected with source scope. It records the decision; it does not obtain authorization from the user or grant itself permission to read sources. The source must be present as currently observed in a published v2 room.
 
 Each decision records `decision_id`, `source_id`, `decision`, `scope`, `revision`, `actor`, `notes`, `classification`, and `recorded_at`. Decisions append to history. Omitted notes and classification retain the earlier values for that source. The CLI joins the relevant decision to generated observations without replacing the original approval record.
 
-- **Snapshot scope** applies only to the known, verified content revision selected by the user. Every snapshot-scoped decision, including exclusion or deferral, requires a verified SHA-256 revision. A size/mtime match is insufficient, and metadata-only discovery must not hash content to satisfy this requirement. Changed or unknown revisions do not silently inherit snapshot approval.
+- **Snapshot scope** applies only to the known, verified content revision selected by the user. Every snapshot-scoped decision, including exclusion or deferral, requires an expected SHA-256 from the exact manifest/version reviewed and a matching verified current revision. The API receives that reviewed `expected_revision` as `{ "kind": "sha256", "value": "<64 lowercase hexadecimal characters>" }`; the CLI receives its value through `--expected-sha256`. It compares the expected and current revisions under the room lock before saving the decision. Missing or mismatched expectations fail. This prevents a decision made for version A from attaching to version B after a rescan. Do not replace the reviewed expectation with a freshly discovered hash. A size/mtime match is insufficient, and metadata-only discovery must not hash content to satisfy this requirement. Changed or unknown revisions do not silently inherit snapshot approval.
 - **Source scope** explicitly applies across current and future observations of that source. Use it only when the user authorizes that broader scope; do not substitute it merely because a snapshot cannot be verified.
 - **Unobserved versus missing:** a complete scan of the same source scope can establish that a prior source is missing. Partial coverage or a changed scan scope cannot. Preserve earlier decisions and notes in either case.
 
 Source approval and drafting approval are different decisions. Record the latter in `PROJECT_BRIEF.md` and `provenance_ledger.md`; a source decision does not authorize the final deliverable.
 
-The review CLI returns `0` after a successful decision/view update, `1` for a room or write error, and `2` for invalid arguments. A view-publication error can occur after the decision is saved; inspect the authoritative review record before retrying.
+The review CLI returns `0` after a successful decision/view update, `1` for a room/write error or a malformed or mismatched expected revision, and `2` for invalid arguments, including a missing snapshot hash or a hash supplied with source scope. A view-publication error can occur after the decision is saved; inspect the authoritative review record before retrying.
 
 ## Publication and Legacy Rooms
 

@@ -46,6 +46,9 @@ class ReviewStateTests(unittest.TestCase):
         return store.load_current(self.room)
 
     def approve(self, scope="snapshot", **kwargs):
+        if scope == "snapshot" and "expected_revision" not in kwargs:
+            observed = next(c for c in self.current()["candidates"] if c["source_id"] == "src_a")
+            kwargs["expected_revision"] = copy.deepcopy(observed["revision"])
         return store.record_review(self.room, "src_a", "approved", scope, "Mike", **kwargs)
 
     def test_snapshot_lifecycle_does_not_transfer_approval(self):
@@ -113,6 +116,33 @@ class ReviewStateTests(unittest.TestCase):
             self.approve()
         self.assertEqual(review_path.read_bytes(), history_before)
         self.assertEqual(len(json.loads(review_path.read_text())["decisions"]), 0)
+
+    def test_stale_snapshot_decision_cannot_approve_a_new_revision(self):
+        observed_a = self.publish()["candidates"][0]["revision"]
+        self.publish([candidate(digest="b" * 64)])
+        review_path = self.room / "review_decisions.json"
+        history_before = review_path.read_bytes()
+        view_before = {name: (self.room / name).read_bytes() for name in store.ARTIFACTS}
+        with self.assertRaisesRegex(ValueError, "differs from the expected"):
+            self.approve(expected_revision=observed_a)
+        self.assertEqual(review_path.read_bytes(), history_before)
+        self.assertEqual(view_before, {name: (self.room / name).read_bytes() for name in store.ARTIFACTS})
+        current_b = self.current()["candidates"][0]["revision"]
+        approved = self.approve(expected_revision=current_b)
+        self.assertEqual(approved["revision"], current_b)
+        self.assertEqual(self.current()["candidates"][0]["review"]["status"], "approved")
+
+    def test_expected_revision_is_required_only_for_snapshot_scope(self):
+        observed = self.publish()["candidates"][0]["revision"]
+        review_path = self.room / "review_decisions.json"
+        history_before = review_path.read_bytes()
+        view_before = {name: (self.room / name).read_bytes() for name in store.ARTIFACTS}
+        with self.assertRaisesRegex(ValueError, "expected verified revision"):
+            store.record_review(self.room, "src_a", "approved", "snapshot", "Mike")
+        with self.assertRaisesRegex(ValueError, "only valid for snapshot"):
+            self.approve(scope="source", expected_revision=observed)
+        self.assertEqual(review_path.read_bytes(), history_before)
+        self.assertEqual(view_before, {name: (self.room / name).read_bytes() for name in store.ARTIFACTS})
 
     def test_interrupted_publish_keeps_all_canonical_outputs_on_old_generation(self):
         first = self.publish()
@@ -263,10 +293,11 @@ class ReviewStateTests(unittest.TestCase):
         self.assertEqual(path.read_bytes(), before)
 
     def test_cli_concurrent_reviews_preserve_both_history_entries(self):
-        self.publish()
+        observed = self.publish()["candidates"][0]["revision"]
         cli = str(Path(store.__file__).with_name("review_sources.py"))
         processes = [subprocess.Popen([sys.executable, cli, "--room", str(self.room), "--source-id", "src_a",
-                                      "--decision", "approved", "--scope", "snapshot", "--actor", actor],
+                                      "--decision", "approved", "--scope", "snapshot", "--actor", actor,
+                                      "--expected-sha256", observed["value"]],
                                      stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
                      for actor in ("Reviewer one", "Reviewer two")]
         for process in processes:
@@ -275,6 +306,28 @@ class ReviewStateTests(unittest.TestCase):
         reviews = json.loads((self.room / "review_decisions.json").read_text())["decisions"]
         self.assertEqual({r["actor"] for r in reviews}, {"Reviewer one", "Reviewer two"})
         self.assertEqual(self.current()["review_history_count"], 2)
+
+    def test_cli_rejects_missing_stale_and_irrelevant_snapshot_tokens(self):
+        observed_a = self.publish()["candidates"][0]["revision"]
+        self.publish([candidate(digest="b" * 64)])
+        review_path = self.room / "review_decisions.json"
+        history_before = review_path.read_bytes()
+        view_before = {name: (self.room / name).read_bytes() for name in store.ARTIFACTS}
+        cli = str(Path(store.__file__).with_name("review_sources.py"))
+        command = [sys.executable, cli, "--room", str(self.room), "--source-id", "src_a", "--decision", "approved", "--actor", "Mike"]
+        scenarios = [(["--scope", "snapshot"], 2, "required"),
+                     (["--scope", "snapshot", "--expected-sha256", observed_a["value"]], 1, "differs from the expected"),
+                     (["--scope", "source", "--expected-sha256", observed_a["value"]], 2, "only valid")]
+        for arguments, expected_exit, message in scenarios:
+            with self.subTest(arguments=arguments):
+                result = subprocess.run(command + arguments, capture_output=True, text=True, timeout=10)
+                self.assertEqual(result.returncode, expected_exit, result.stderr)
+                self.assertIn(message, result.stderr)
+        self.assertEqual(review_path.read_bytes(), history_before)
+        self.assertEqual(view_before, {name: (self.room / name).read_bytes() for name in store.ARTIFACTS})
+        matched = subprocess.run(command + ["--scope", "snapshot", "--expected-sha256", "b" * 64], capture_output=True, text=True, timeout=10)
+        self.assertEqual(matched.returncode, 0, matched.stderr)
+        self.assertEqual(json.loads(matched.stdout)["revision"], {"kind": "sha256", "value": "b" * 64})
 
 
 if __name__ == "__main__":

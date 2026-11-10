@@ -133,10 +133,13 @@ python3 scripts/review_sources.py \
   --room /path/to/project-room \
   --source-id src_SOURCE_ID \
   --decision approved --scope snapshot \
+  --expected-sha256 REVIEWED_SHA256 \
   --actor "Mike" --notes "Approved this reviewed version"
 ```
 
-Snapshot scope requires a verified content hash, obtained only through authorized hashing. Metadata-only size and timestamps are not proof of an unchanged version. Use `--scope source` only when the user explicitly approves the source across current and future observations. Decisions can also be `excluded` or `deferred`; classifications and notes remain separate from approval.
+Replace `REVIEWED_SHA256` with the 64-character lowercase SHA-256 from the exact manifest/version the user reviewed. Snapshot scope requires this expected hash and a verified current revision, obtained only through authorized hashing. The command compares them under the room lock before saving a decision. If a rescan replaces reviewed version A with version B, an approval for A fails; do not substitute B's hash without reviewing B.
+
+Metadata-only size and timestamps are not proof of an unchanged version. Use `--scope source` only when the user explicitly approves the source across current and future observations; omit `--expected-sha256` for that broader scope. Decisions can also be `excluded` or `deferred`; classifications and notes remain separate from approval.
 
 Rescanning retains decision history. A changed or unknown revision does not silently inherit snapshot approval, and a source unseen during incomplete or differently scoped discovery is not declared missing. Existing authorization still applies when its recorded scope covers the observation.
 
