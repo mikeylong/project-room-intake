@@ -1,0 +1,603 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "project-room-intake.candidates.v2.schema.json",
+  "title": "Project Room Intake candidate observations v2",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "scan_id",
+    "generated_at",
+    "roots",
+    "query",
+    "filters",
+    "content_access",
+    "coverage",
+    "enrichment",
+    "candidates",
+    "exclusions"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "project-room-intake.candidates.v2"
+    },
+    "scan_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "generated_at": {
+      "type": "string"
+    },
+    "roots": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "query": {
+      "type": "string"
+    },
+    "filters": {
+      "type": "object",
+      "required": [
+        "include",
+        "exclude"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "include": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "exclude": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "content_access": {
+      "type": "object",
+      "required": [
+        "mode",
+        "hashes",
+        "snippets"
+      ],
+      "properties": {
+        "mode": {
+          "enum": [
+            "metadata",
+            "hash",
+            "preview",
+            "hash+preview"
+          ]
+        },
+        "hashes": {
+          "type": "boolean"
+        },
+        "snippets": {
+          "type": "boolean"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "mode": {
+                "const": "metadata"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "hashes": {
+                "const": false
+              },
+              "snippets": {
+                "const": false
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "mode": {
+                "const": "hash"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "hashes": {
+                "const": true
+              },
+              "snippets": {
+                "const": false
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "mode": {
+                "const": "preview"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "hashes": {
+                "const": false
+              },
+              "snippets": {
+                "const": true
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "mode": {
+                "const": "hash+preview"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "hashes": {
+                "const": true
+              },
+              "snippets": {
+                "const": true
+              }
+            }
+          }
+        }
+      ]
+    },
+    "coverage": {
+      "type": "object",
+      "required": [
+        "status",
+        "inputs",
+        "errors"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "complete",
+            "partial",
+            "failed"
+          ]
+        },
+        "inputs": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "errors": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "path",
+              "operation",
+              "error",
+              "message"
+            ],
+            "properties": {
+              "root": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "operation": {
+                "type": "string"
+              },
+              "error": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "enrichment": {
+      "type": "object",
+      "required": [
+        "status",
+        "errors"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "not_requested",
+            "complete",
+            "partial"
+          ]
+        },
+        "errors": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "path",
+              "operation",
+              "error",
+              "message"
+            ],
+            "properties": {
+              "root": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "operation": {
+                "type": "string"
+              },
+              "error": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "candidates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "source_id",
+          "source_type",
+          "path",
+          "size_bytes",
+          "relevance_score",
+          "revision",
+          "metadata_token",
+          "provider",
+          "version",
+          "retrieval_status"
+        ],
+        "properties": {
+          "source_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "source_type": {
+            "type": "string",
+            "minLength": 1
+          },
+          "root": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "relative_path": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "extension": {
+            "type": "string"
+          },
+          "mime_type": {
+            "type": "string"
+          },
+          "modified_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "owner": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "mode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "duplicate_hint": {
+            "type": "string"
+          },
+          "snippet": {
+            "type": "string"
+          },
+          "relevance_reasons": {
+            "type": "string"
+          },
+          "size_bytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "relevance_score": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "revision": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "sha256"
+                  },
+                  "value": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$"
+                  }
+                }
+              }
+            ]
+          },
+          "metadata_token": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "size_bytes",
+                  "mtime_ns"
+                ],
+                "properties": {
+                  "size_bytes": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "mtime_ns": {
+                    "type": "integer"
+                  }
+                }
+              }
+            ]
+          },
+          "provider": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Provider name when known; null for local or unknown."
+          },
+          "version": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Provider revision or etag when supplied. It is not a SHA-256 checksum or independently verified approval revision."
+          },
+          "retrieval_status": {
+            "enum": [
+              "content_error",
+              "content_read",
+              "metadata_only",
+              "not_retrieved",
+              "retrieval_error",
+              "retrieved"
+            ]
+          },
+          "hash_status": {
+            "enum": [
+              "changed",
+              "error",
+              "hashed",
+              "not_requested",
+              "symlink_skipped",
+              "too_large",
+              "unsupported_type"
+            ]
+          },
+          "snippet_status": {
+            "enum": [
+              "binary_skipped",
+              "captured",
+              "changed",
+              "disabled",
+              "empty",
+              "error",
+              "not_requested",
+              "symlink_skipped",
+              "too_large",
+              "unsupported_type"
+            ]
+          },
+          "observation_status": {
+            "enum": [
+              "observed",
+              "missing",
+              "unobserved"
+            ]
+          },
+          "last_observed_at": {
+            "type": "string"
+          },
+          "observation_scope": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "roots": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "filters": {
+                "type": "object",
+                "required": [
+                  "include",
+                  "exclude"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "include": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "exclude": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "review": {
+            "type": "object",
+            "required": [
+              "status",
+              "reason",
+              "decision_id"
+            ],
+            "properties": {
+              "status": {
+                "enum": [
+                  "unreviewed",
+                  "approved",
+                  "excluded",
+                  "deferred",
+                  "needs_review",
+                  "unavailable"
+                ]
+              },
+              "reason": {
+                "enum": [
+                  "no_decision",
+                  "source_scope",
+                  "matching_revision",
+                  "revision_unknown",
+                  "revision_changed",
+                  "missing",
+                  "unobserved"
+                ]
+              },
+              "decision_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "scope": {
+                "enum": [
+                  "source",
+                  "snapshot"
+                ]
+              },
+              "actor": {
+                "type": "string"
+              },
+              "notes": {
+                "type": "string"
+              },
+              "classification": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "recorded_at": {
+                "type": "string"
+              }
+            }
+          },
+          "extensions": {
+            "type": "object",
+            "description": "Namespaced provider/application fields. Preserve them during conversion."
+          }
+        },
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "provider": {
+                  "type": "null"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "size_bytes": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    "exclusions": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "review_history_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "publication": {
+      "type": "object",
+      "required": [
+        "generation_id",
+        "published_at"
+      ],
+      "properties": {
+        "generation_id": {
+          "type": "string"
+        },
+        "published_at": {
+          "type": "string"
+        }
+      }
+    },
+    "extensions": {
+      "type": "object",
+      "description": "Namespaced room-level fields retained on refresh."
+    }
+  },
+  "additionalProperties": false
+}

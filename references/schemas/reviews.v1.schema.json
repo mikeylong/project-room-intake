@@ -1,0 +1,145 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "project-room-intake.reviews.v1.schema.json",
+  "title": "Project Room Intake append-only review history v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "decisions"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "project-room-intake.reviews.v1"
+    },
+    "decisions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "decision_id",
+          "source_id",
+          "decision",
+          "scope",
+          "revision",
+          "actor",
+          "notes",
+          "classification",
+          "recorded_at"
+        ],
+        "properties": {
+          "decision_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "source_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "decision": {
+            "enum": [
+              "approved",
+              "excluded",
+              "deferred"
+            ]
+          },
+          "scope": {
+            "enum": [
+              "snapshot",
+              "source"
+            ]
+          },
+          "revision": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "sha256"
+                  },
+                  "value": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$"
+                  }
+                }
+              }
+            ]
+          },
+          "actor": {
+            "type": "string",
+            "minLength": 1
+          },
+          "notes": {
+            "type": "string"
+          },
+          "classification": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "recorded_at": {
+            "type": "string"
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "scope": {
+                  "const": "snapshot"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "revision": {
+                  "type": "object",
+                  "required": [
+                    "kind",
+                    "value"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "kind": {
+                      "const": "sha256"
+                    },
+                    "value": {
+                      "type": "string",
+                      "pattern": "^[0-9a-f]{64}$"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "scope": {
+                  "const": "source"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "revision": {
+                  "type": "null"
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}
