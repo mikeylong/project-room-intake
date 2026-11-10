@@ -1,0 +1,88 @@
+name: CI
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: macOS / Python ${{ matrix.python-version }}
+    runs-on: macos-15
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.14"]
+    defaults:
+      run:
+        shell: bash
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+      CI_PYTHON_VERSION: ${{ matrix.python-version }}
+
+    steps:
+      - name: Initialize evidence directory
+        run: |
+          echo "CI_EVIDENCE_DIR=$RUNNER_TEMP/project-room-intake-ci" >> "$GITHUB_ENV"
+          echo "CI_ARTIFACT_PATH=$RUNNER_TEMP/project-room-intake-ci-$CI_PYTHON_VERSION.tar.gz" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/project-room-intake-ci"
+
+      - name: Check out pull request
+        id: checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        id: python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: ${{ matrix.python-version }}
+          architecture: arm64
+
+      - name: Record runtime and source identity
+        run: |
+          python - <<'PY'
+          import json, os, platform, subprocess, sys
+          from pathlib import Path
+          record = {
+              "python": sys.version,
+              "platform": platform.platform(),
+              "architecture": platform.machine(),
+              "commit": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
+              "run_id": os.environ["GITHUB_RUN_ID"],
+              "run_attempt": os.environ["GITHUB_RUN_ATTEMPT"],
+          }
+          Path(os.environ["CI_EVIDENCE_DIR"], "runtime.json").write_text(json.dumps(record, indent=2) + "\n")
+          PY
+
+      - name: Run test suite
+        if: ${{ !cancelled() && steps.checkout.outcome == 'success' && steps.python.outcome == 'success' }}
+        run: python -m unittest discover -s tests -v 2>&1 | tee "$CI_EVIDENCE_DIR/unittest.log"
+
+      - name: Run automated smoke check
+        if: ${{ !cancelled() && steps.checkout.outcome == 'success' && steps.python.outcome == 'success' }}
+        run: python scripts/smoke_test.py run --output "$CI_EVIDENCE_DIR/smoke" 2>&1 | tee "$CI_EVIDENCE_DIR/smoke.log"
+
+      # Tar retains hidden generation files and symlinks without following them.
+      - name: Archive verification evidence
+        id: archive
+        if: ${{ always() }}
+        run: |
+          mkdir -p "$CI_EVIDENCE_DIR"
+          tar -czf "$CI_ARTIFACT_PATH" -C "$CI_EVIDENCE_DIR" .
+
+      - name: Upload verification evidence
+        if: ${{ always() && steps.archive.outcome == 'success' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ci-macos-python-${{ matrix.python-version }}
+          path: ${{ env.CI_ARTIFACT_PATH }}
+          if-no-files-found: error
+          retention-days: 14

@@ -18,9 +18,15 @@ Reproduce from the repository with each selected interpreter:
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -v
 ```
 
-The source uses Python 3.10+ syntax and POSIX APIs, including `fcntl`, `pwd`, directory descriptors, and no-follow filesystem operations. Python 3.10, other interpreter versions, Linux, and other macOS versions/architectures have not been validated by this record. Native Windows is unsupported. No browser behavior is involved in these checks.
+The source uses Python 3.10+ syntax and POSIX APIs, including `fcntl`, `pwd`, directory descriptors, and no-follow filesystem operations. The table records local validation. Hosted macOS 15 arm64 validation is reported by the PR workflow described below. Python 3.10, other interpreter versions, Linux, and other macOS versions/architectures remain outside this recorded scope. Native Windows is unsupported. No browser behavior is involved in these checks.
 
 These tests establish specific boundaries, review persistence, publication/refusal behavior, and scoring calculations. They are not measurements of real-world source recall, user effort, writing quality, or trust.
+
+## Pull-request CI
+
+The [CI workflow](../.github/workflows/ci.yml) targets macOS 15 arm64 with Python 3.11, 3.12, and 3.14 on every pull request. Each job executes the complete unittest suite and automated smoke check. Its uploaded evidence records the actual Python patch version, operating system, architecture, checked-out commit, logs, smoke assertions, and cleanup result. Read the run's checks and artifacts to establish success for that revision; the local counts above do not imply that a hosted run passed.
+
+The [CI evidence guide](smoke-test.md#github-actions) describes artifact contents and retention. Hosted CI does not exercise agent-written room documents, human review, desktop skill discovery, live connectors, or browser behavior.
 
 ## Repeatable smoke check
 

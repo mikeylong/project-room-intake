@@ -172,6 +172,8 @@ The review CLI commits the authoritative decision before refreshing candidate vi
 
 ## Tests
 
+The [GitHub Actions workflow](.github/workflows/ci.yml) runs the full test suite and automated smoke check on every pull request, using macOS 15 arm64 with Python 3.11, 3.12, and 3.14. Each matrix job uploads its runtime identity, test log, and smoke evidence for 14 days, including on failure. The agent-driven staged smoke path remains a separate check. See the [CI evidence guide](references/smoke-test.md#github-actions).
+
 Run the focused scanner and room-persistence tests without writing Python bytecode:
 
 ```sh

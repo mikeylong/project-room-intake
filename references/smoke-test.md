@@ -34,6 +34,14 @@ The automatic check covers:
 
 `run` does not generate the six room documents or a memo. Use the staged path to exercise those agent tasks.
 
+## GitHub Actions
+
+The [CI workflow](../.github/workflows/ci.yml) runs on pull-request creation, updates, and reopening, with no branch or path filters. It uses GitHub-hosted macOS 15 arm64 runners and Python 3.11, 3.12, and 3.14. Each job runs the unittest suite and the automated `run` command; a test failure does not skip the smoke step when checkout and Python setup succeeded. Failed commands fail the job. New commits cancel older runs for the same pull request.
+
+Download `ci-macos-python-<version>` from the workflow run's artifacts. Each contains a tar archive with `runtime.json`, `unittest.log`, `smoke.log`, and the full `smoke/` evidence directory. The archive preserves hidden generation files and symlink entries without following their targets. Temporary fixture paths in the evidence are historical after verified cleanup. Artifacts are retained for 14 days; archiving and upload are attempted on failure as well as success.
+
+The workflow uses a read-only repository token and does not persist checkout credentials. It does not launch an agent or run the staged room/draft checkpoints. The [validation record](validation.md) separates local runtime results from per-run hosted CI evidence.
+
 ## Staged agent check
 
 Use one output directory for every stage. The target skill and owned source location are recorded during preparation; later commands reuse that state.
