@@ -1,0 +1,72 @@
+{
+  "frozen_at": "2026-11-10T21:31:03.928664+00:00",
+  "protocol_sha256": "71192c2570f738455856319be4d84641fd722866a4657fe0ef41e64f92162d3d",
+  "dispatch_prompts_sha256": "792176aa73d90b39786b03c1fd609cd01954eef4093dac520e22659b4b212128",
+  "skill_sha256": "0dcb7ae79826414858ad0c329d27abe9a50937090e5a6ceff15d0c6c3be40508",
+  "intake_contract_sha256": "83eb91d0f40937f463f921c1f9a011bc1bebbe0eaf24805e80e4f461d44455f1",
+  "corpus_unchanged": true,
+  "arms": {
+    "ordinary": {
+      "dispatch_at": "2026-11-10T21:31:52.235206+00:00",
+      "completed_file_mtime": "2026-11-10T21:34:15.710105+00:00",
+      "elapsed_seconds": 143.474899,
+      "handoff_whitespace_words": 550,
+      "citation_ids_match_used_sources": true,
+      "citation_paths_and_start_lines_valid": true,
+      "reported_hashes_match_snapshot": true,
+      "nominated_source_count": 8,
+      "used_source_count": 8,
+      "handoff_sha256": "8edcdf9cd003f13ed98a6afaa22dac1dc220e2d19e00d5a0f2f8d94f8705d80d",
+      "audit_sha256": "e3123217e6aa4f1a771b0f1c14471429f9a4e9b9780e73cba4e37f097c5d9d2d",
+      "portable_handoff_sha256": "8e73b39801ffe83709d2b9de13b706e6c55cafac8c321b6ede0d9294b4baf5ec"
+    },
+    "skill": {
+      "dispatch_at": "2026-11-10T21:32:11.334684+00:00",
+      "completed_file_mtime": "2026-11-10T21:36:29.468318+00:00",
+      "elapsed_seconds": 258.133634,
+      "handoff_whitespace_words": 531,
+      "citation_ids_match_used_sources": true,
+      "citation_paths_and_start_lines_valid": true,
+      "reported_hashes_match_snapshot": true,
+      "nominated_source_count": 9,
+      "used_source_count": 7,
+      "handoff_sha256": "38925c94bab014a12db3506f236fb958ab1e79977b50244d7feb1e59a2ffc3ff",
+      "audit_sha256": "240b6dacb5cb71dcccf977e191850b43a1c391889561f7d4122590cbedbb64fe",
+      "portable_handoff_sha256": "077cf2e33cca9bd983bab9e122320ab2224839d9ad7d3662535e1faca251d496"
+    }
+  },
+  "environment": {
+    "host": "macOS 27.2 arm64",
+    "python": "3.14.7",
+    "invocation": "Explicit SKILL.md path in an isolated Codex agent session hosted by the desktop app"
+  },
+  "evidence_limits": [
+    "No OS-level access tracing or production-client installation test",
+    "Importance/relevance labels and criteria withheld from both agents",
+    "Same inherited agent model; no model or reasoning override; no controlled random seed",
+    "Wall time includes dispatch queue, tool latency, parallel contention, and different artifact work",
+    "Source citation paths and start lines checked; claim quality was not independently scored"
+  ],
+  "portable_handoff_note": "Portable handoff copies rebase local source links to the exact GitHub commit and replace local example paths with placeholders. Original hashes below refer to unedited agent outputs preserved in local task evidence.",
+  "runtime_code_sha256": {
+    "scripts/scan_sources.py": "22829b3f109cb496227a3c6b8ce7bf3222e47fe680d2036b366178f92cbf4598",
+    "scripts/review_sources.py": "61b0221b087f39f207f982debc48546b02010b38f84baf119546867bf7bdb06f",
+    "scripts/intake_store.py": "a2e0f9bca515c62684088896159701cbb44ba95f811c7afc7aaf7d92ee8f7b9f",
+    "scripts/score_trial.py": "d05768b1495a6a1a9a72c251fa6a874467f07266383187548b03bf8f1a8eb236"
+  },
+  "skill_room_verification": {
+    "required_documents_present": [
+      "source_inventory.md",
+      "conflict_log.md",
+      "missing_context.md",
+      "duplicate_report.md",
+      "provenance_ledger.md",
+      "PROJECT_BRIEF.md"
+    ],
+    "coverage": "complete",
+    "observed_candidates": 14,
+    "snapshot_decisions": 9,
+    "effective_approved_candidates": 9,
+    "handoff_present": true
+  }
+}

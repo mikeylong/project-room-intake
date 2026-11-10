@@ -1,0 +1,113 @@
+{
+  "schema_version": "project-room-intake.trial-freeze.v1",
+  "protocol_sha256": "71192c2570f738455856319be4d84641fd722866a4657fe0ef41e64f92162d3d",
+  "protocol": {
+    "schema_version": "project-room-intake.trial.v1",
+    "trial_id": "repository-cli-handoff-2026-11-10",
+    "task": "Prepare an engineering handoff of at most 700 words for using this repository's command-line intake and review tools with a bounded mixed-file project. Explain exact-file discovery boundaries and content access, review persistence after refresh or changed versions, and partial-discovery/output-error handling. Include concrete example commands and distinguish implemented behavior from unproven benefit claims. Focus on CLI operation; client UI metadata and installation design are outside this handoff. First identify the sources you nominate as useful evidence, then draft the handoff. The corpus is the 14 tracked files at repository commit 43259d6cc706653a857966b346f3925da549debc. All files in this exact snapshot are approved for metadata discovery, reading, and content hashing for this handoff. Source use and drafting are already authorized; keep references and do not modify sources. No internet, other repository versions, or ambient files are authorized.",
+    "corpus_revision": "43259d6cc706653a857966b346f3925da549debc",
+    "arms": [
+      "ordinary",
+      "skill"
+    ],
+    "sources": [
+      {
+        "source_id": "README.md",
+        "sha256": "48011a1e9be202704052d3556ddb0af5019ba23aa262b7f796b557384b28096e",
+        "important": false,
+        "relevant": true
+      },
+      {
+        "source_id": "SKILL.md",
+        "sha256": "7e992e4c7dbd5273b52ef0ffd15aa2cc84fba19055e48cc759f22f3f7ee769b9",
+        "important": false,
+        "relevant": true
+      },
+      {
+        "source_id": "agents/openai.yaml",
+        "sha256": "1f6a0d2f6ac6a009f3a08d52ba4c41dfdc8d37d0b7e9a31449943d071230f48a",
+        "important": false,
+        "relevant": false
+      },
+      {
+        "source_id": "references/intake-contract.md",
+        "sha256": "83eb91d0f40937f463f921c1f9a011bc1bebbe0eaf24805e80e4f461d44455f1",
+        "important": true,
+        "relevant": true
+      },
+      {
+        "source_id": "references/schemas/candidates.v2.schema.json",
+        "sha256": "d02d0115b5b5ec4875dc76af912cbe76951cec4c58baad1dc90ec64883365076",
+        "important": false,
+        "relevant": true
+      },
+      {
+        "source_id": "references/schemas/reviews.v1.schema.json",
+        "sha256": "391877933eb9aabcdb336c2a26075b10aaacf3db036cb1e982f70f224ad5ac31",
+        "important": false,
+        "relevant": true
+      },
+      {
+        "source_id": "scripts/intake_store.py",
+        "sha256": "a2e0f9bca515c62684088896159701cbb44ba95f811c7afc7aaf7d92ee8f7b9f",
+        "important": true,
+        "relevant": true
+      },
+      {
+        "source_id": "scripts/review_sources.py",
+        "sha256": "61b0221b087f39f207f982debc48546b02010b38f84baf119546867bf7bdb06f",
+        "important": true,
+        "relevant": true
+      },
+      {
+        "source_id": "scripts/scan_sources.py",
+        "sha256": "22829b3f109cb496227a3c6b8ce7bf3222e47fe680d2036b366178f92cbf4598",
+        "important": true,
+        "relevant": true
+      },
+      {
+        "source_id": "tests/approval_scenarios.md",
+        "sha256": "63366411b4d9e1b7c59d25d73716ed220317482dd3f21b6c51cffe618a4299f6",
+        "important": false,
+        "relevant": true
+      },
+      {
+        "source_id": "tests/fixtures/contracts/candidates.json",
+        "sha256": "762b14efd4acdde14e49d765257654b91cd0da9f920416f44bf3e4f5b41a4d00",
+        "important": false,
+        "relevant": true
+      },
+      {
+        "source_id": "tests/test_contract.py",
+        "sha256": "4d81fc631a27d23610217fcb52965274781a5937611de5cb0e1ed900eba56027",
+        "important": false,
+        "relevant": true
+      },
+      {
+        "source_id": "tests/test_review_state.py",
+        "sha256": "8d8e5d0adcaea023223e47587d84065e926095993fee83d4b39dfb8ccccaf561",
+        "important": false,
+        "relevant": true
+      },
+      {
+        "source_id": "tests/test_scanner.py",
+        "sha256": "005dae1f8e0eb88745169d7e2d7604ecdd64f80d8e5cc2d2b21e26ef24c2fb82",
+        "important": false,
+        "relevant": true
+      }
+    ],
+    "confounders": [
+      "One task and one run per arm; no statistical or causal estimate.",
+      "Agents use the same model family and comparable isolated context, but sampling is nondeterministic and not seed-controlled.",
+      "Each agent can read SKILL.md as project evidence; this can contaminate the ordinary-intake comparison even though it is instructed not to use that workflow.",
+      "The corpus is the skill repository itself, not a representative project corpus; task familiarity and self-reference may favor either route.",
+      "Only one source is designated irrelevant; no stale source variants were seeded, limiting sensitivity of irrelevant-candidate and version-mistake metrics.",
+      "Importance and relevance are task-specific evaluator judgments frozen before agent execution, not a user-validated gold standard.",
+      "Both arms receive complete source-use and drafting authorization up front; clarification burden under missing information is not exercised.",
+      "Wall time includes queueing, tool latency, parallel contention, and artifact creation; it is not measured human effort.",
+      "No human participant corrects outputs; user corrections and human effort are unknown, not zero.",
+      "Output-source nominations and cited use are agent-reported and checked against artifacts, not OS-level access tracing."
+    ],
+    "measurement_notes": "Important sources are the three operational scripts plus their intake contract because the handoff must reconcile command usage with persistence and failure semantics. All other tracked sources are relevant supporting context except agents/openai.yaml, which concerns client UI metadata outside this task. Missed important sources are counted against sources actually used in the handoff, not merely enumerated. Candidate irrelevance uses sources nominated as useful evidence. Version mistakes compare reported used-file SHA-256 with the frozen snapshot; null remains unverified. Clarification turns count explicit information/approval requests made before delivery. Elapsed seconds run from dispatch to the final COMPLETED.json file modification time. User corrections and human effort remain null because no human participant is measured. No gain target, winner rule, or outcome claim is predefined."
+  }
+}
