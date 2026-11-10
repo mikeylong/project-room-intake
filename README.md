@@ -180,6 +180,15 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -v
 
 These tests check bounded discovery and preservation behavior. They do not establish improved source recall, writing quality, or user trust in real projects.
 
+Run the repeatable CLI smoke check against this checkout with a new evidence directory:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/smoke_test.py run \
+  --output /path/to/local/smoke-runs/run-001
+```
+
+The harness creates disposable synthetic sources, checks discovery and review lifecycles, preserves evidence, and removes its owned fixtures. Add `--skill-dir /path/to/installed/project-room-intake` to check an installed copy. Existing output directories are refused. The [smoke-test guide](references/smoke-test.md) also documents the staged agent path for room preparation and drafting, failure cleanup, evidence, and limits. The one-command check does not run an agent or establish human approval quality.
+
 [Contract examples](tests/fixtures/contracts/candidates.json) cover local files, symlinks, unretrieved/retrieved connector metadata, and partial discovery. [Manual approval scenarios](tests/approval_scenarios.md) provide reusable requests and decision criteria for evaluating the skill's approval behavior separately from scanner correctness.
 
 ## Bounded Evaluation
