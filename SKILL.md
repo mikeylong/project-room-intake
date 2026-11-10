@@ -5,7 +5,7 @@ description: Discover and stage candidate sources for a bounded project/data roo
 
 # Project Room Intake
 
-Use this skill to start a bounded project/data room before synthesis or drafting. The goal is to raise source recall without flooding the agent context or silently importing unreviewed material.
+Use this skill to start a bounded project/data room before synthesis or drafting. The goal is to raise source recall without flooding the agent context or silently importing unreviewed material. That is an intended benefit, not an established outcome of the mechanical tests.
 
 This skill is for serious multi-source knowledge work: research reports, audits, board or PRD work, legal/finance-adjacent writing, content strategy, due diligence, and projects where source authority, freshness, duplicates, or missing context matter.
 
@@ -95,3 +95,5 @@ Response behavior:
 
 - `scripts/scan_sources.py`: Local filesystem metadata scanner for candidate discovery.
 - `references/intake-contract.md`: Artifact contract and field definitions.
+- `references/validation.md`: Tested environments, invocation evidence, and limits on outcome claims.
+- `references/trial-contract.md`: Frozen criteria and scoring for an explicitly requested bounded evaluation; do not add a trial to ordinary intake work.

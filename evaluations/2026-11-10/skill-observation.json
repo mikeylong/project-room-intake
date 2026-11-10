@@ -1,0 +1,63 @@
+{
+  "schema_version": "project-room-intake.trial-observation.v1",
+  "trial_id": "repository-cli-handoff-2026-11-10",
+  "protocol_sha256": "71192c2570f738455856319be4d84641fd722866a4657fe0ef41e64f92162d3d",
+  "arm_id": "skill",
+  "candidate_source_ids": [
+    "README.md",
+    "SKILL.md",
+    "references/intake-contract.md",
+    "scripts/scan_sources.py",
+    "scripts/review_sources.py",
+    "scripts/intake_store.py",
+    "tests/test_scanner.py",
+    "tests/test_review_state.py",
+    "tests/test_contract.py"
+  ],
+  "used_sources": [
+    {
+      "source_id": "references/intake-contract.md",
+      "sha256": "83eb91d0f40937f463f921c1f9a011bc1bebbe0eaf24805e80e4f461d44455f1"
+    },
+    {
+      "source_id": "scripts/scan_sources.py",
+      "sha256": "22829b3f109cb496227a3c6b8ce7bf3222e47fe680d2036b366178f92cbf4598"
+    },
+    {
+      "source_id": "scripts/review_sources.py",
+      "sha256": "61b0221b087f39f207f982debc48546b02010b38f84baf119546867bf7bdb06f"
+    },
+    {
+      "source_id": "scripts/intake_store.py",
+      "sha256": "a2e0f9bca515c62684088896159701cbb44ba95f811c7afc7aaf7d92ee8f7b9f"
+    },
+    {
+      "source_id": "tests/test_scanner.py",
+      "sha256": "005dae1f8e0eb88745169d7e2d7604ecdd64f80d8e5cc2d2b21e26ef24c2fb82"
+    },
+    {
+      "source_id": "tests/test_review_state.py",
+      "sha256": "8d8e5d0adcaea023223e47587d84065e926095993fee83d4b39dfb8ccccaf561"
+    },
+    {
+      "source_id": "README.md",
+      "sha256": "48011a1e9be202704052d3556ddb0af5019ba23aa262b7f796b557384b28096e"
+    }
+  ],
+  "user_corrections": null,
+  "clarification_turns": 0,
+  "elapsed_seconds": 258.133634,
+  "human_effort_minutes": null,
+  "notes": [
+    "Candidate nominations were recorded after metadata discovery and before content synthesis. Enumerated files not nominated as useful evidence are omitted from candidate_source_ids.",
+    "The 14-file corpus and commit identity were supplied by the task; no Git metadata, other versions, ambient project files, internet, or evaluator materials were consulted.",
+    "All 14 corpus files were hashed under explicit authorization; used_sources lists only the seven exact-byte sources cited or used in handoff.md.",
+    "The allowed project-room-intake-low-priority skill and intake contract governed workflow; its scanner and review CLI performed room preparation. They are not counted as repository evidence sources.",
+    "Nine nominated sources received snapshot decisions using agent-observed hashes under existing task authorization; no user review of those hashes or future-version approval is claimed.",
+    "Implementation and selected test assertions were inspected; the repository test suite was not executed. Example commands were syntax-checked only and were not run against illustrative project paths.",
+    "No source-recall, writing-quality, trust, human-effort, correction, or timing benefit was measured. Completion time is a real UTC timestamp, not an elapsed-duration claim.",
+    "No explicit information or approval requests were needed before delivery.",
+    "Elapsed time is controller dispatch to final COMPLETED.json modification time; it includes queueing, tools, and artifact overhead.",
+    "No human participant was measured; corrections and human effort are null."
+  ]
+}

@@ -4,7 +4,7 @@ Project Room Intake helps get the right source material in place before writing 
 
 It is useful when the work depends on more than one file, folder, export, transcript, or shared source. Instead of jumping straight into a memo, PRD, audit, report, or research brief, the skill creates a short intake step: what sources exist, which ones look useful, what may be stale or duplicated, and what still seems missing.
 
-The value is simple: better source coverage, fewer accidental assumptions, and a clear moment for human review before drafting begins.
+The intended benefits are better source coverage, fewer accidental assumptions, and a clear moment for human review before drafting begins. Current tests establish specific discovery and review behaviors; they do not establish better real-world recall, writing quality, or user trust.
 
 ## When To Use It
 
@@ -33,7 +33,7 @@ Common failure modes:
 - Private or sensitive material gets pulled into the work without an explicit review step.
 - The final answer sounds confident, but the source set was incomplete.
 
-Project Room Intake is designed to slow down that first step just enough to make the rest of the work more trustworthy.
+Project Room Intake provides an explicit source-review step. Whether that step improves the result enough to justify its effort needs a task-specific comparison.
 
 ## What It Does
 
@@ -70,7 +70,7 @@ The local scanner also maintains a durable `review_decisions.json`. It keeps sou
 
 ## Invocation Examples
 
-These examples are plain requests. They do not depend on a specific app or platform.
+These examples describe the intended workflow. The [validation record](references/validation.md) distinguishes tested invocation paths from unverified client behavior.
 
 ```text
 Set up a project room for a board memo using the files in [project folder] and the attached source manifest. Do not draft yet.
@@ -88,7 +88,7 @@ The important part is giving the skill a bounded place to look. It is intentiona
 
 ## Local Scanner
 
-The scanner requires Python 3.10 or later on a POSIX system, such as Linux or macOS. Windows is not a supported runtime. Run it from this repository and keep the room separate from the approved source roots:
+The scanner uses Python 3.10+ syntax and POSIX filesystem APIs. The current verified runtime is macOS; [tested interpreter versions and support limits](references/validation.md) are recorded separately. Linux and Python 3.10 are unverified; Windows is not supported. Run it from this repository and keep the room separate from the approved source roots:
 
 ```sh
 python3 scripts/scan_sources.py \
@@ -182,8 +182,14 @@ These tests check bounded discovery and preservation behavior. They do not estab
 
 [Contract examples](tests/fixtures/contracts/candidates.json) cover local files, symlinks, unretrieved/retrieved connector metadata, and partial discovery. [Manual approval scenarios](tests/approval_scenarios.md) provide reusable requests and decision criteria for evaluating the skill's approval behavior separately from scanner correctness.
 
+## Bounded Evaluation
+
+For an explicit evaluation request, use the [trial protocol](references/trial-contract.md) to freeze the task, authorized source identities, important/relevant source sets, comparison arms, measurement rules, and confounders before either run. `scripts/score_trial.py` validates recorded observations and computes descriptive counts and differences; it does not retrieve sources, run agents, infer missing measurements, or declare a winner.
+
+The [validation record](references/validation.md) separates runtime checks, agent invocation evidence, and the bounded comparison. Unknown human effort and user corrections remain unknown. A small repository trial cannot establish effectiveness across real projects or client installations.
+
 ## Why The Review Step Matters
 
-The best draft is usually not the one produced fastest. It is the one based on the right material.
+Source selection deserves review alongside the draft itself.
 
-Project Room Intake gives the human a chance to catch the source problem early: wrong folder, missing export, stale deck, duplicated notes, or a source that should be excluded. That makes the final writing more grounded and easier to trust.
+Project Room Intake gives the human a chance to catch a source problem early: wrong folder, missing export, stale deck, duplicated notes, or a source that should be excluded. The effect on writing quality and trust remains to be measured.

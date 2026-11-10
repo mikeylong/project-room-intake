@@ -1,0 +1,15 @@
+{
+  "schema_version": "project-room-intake.trial.v1",
+  "trial_id": "synthetic-scoring-example",
+  "task": "Prepare a bounded engineering handoff using only the synthetic declared sources.",
+  "corpus_revision": "synthetic-fixture-v1",
+  "arms": ["ordinary", "skill"],
+  "sources": [
+    {"source_id": "important-a", "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "important": true, "relevant": true},
+    {"source_id": "important-b", "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "important": true, "relevant": true},
+    {"source_id": "context", "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "important": false, "relevant": true},
+    {"source_id": "irrelevant", "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "important": false, "relevant": false}
+  ],
+  "confounders": ["Synthetic scorer fixture; no agent or user behavior was observed."],
+  "measurement_notes": "Candidate means nominated for review/use; used means cited as evidence in the resulting handoff. Elapsed seconds are wall-clock runtime, not human effort. Unknown measurements remain null. Fixture hashes are illustrative identities, not hashes of source files."
+}
