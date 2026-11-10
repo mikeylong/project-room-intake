@@ -49,7 +49,7 @@ After discovery, it gives the user a reviewable set of artifacts:
 - Notes about missing context.
 - A clear next step: approve sources, add more locations, or stop.
 
-Only after that review should the material be used for synthesis or drafting.
+There are two review decisions. First, approve the candidate sources and their intended use. The skill then prepares the room. Second, review the completed room and authorize the deliverable. Explicit authorization is reused within its recorded scope; retrieving an already approved source or formatting the room does not require another confirmation.
 
 ## What You Get
 
@@ -65,6 +65,8 @@ After approval, the skill can create a project room with:
 - `PROJECT_BRIEF.md`
 
 Those files make it easier to see what the work is based on, what may be in tension, and what should still be checked.
+
+The local scanner also maintains a durable `review_decisions.json`. It keeps source decisions and notes separate from generated observations so rescanning does not replace them. The scanner prepares candidate artifacts; it does not automatically write the six room documents or the final deliverable.
 
 ## Invocation Examples
 
@@ -83,6 +85,74 @@ Create a project room for an audit of [topic]. Use only the approved folders I p
 ```
 
 The important part is giving the skill a bounded place to look. It is intentionally cautious about broad searches.
+
+## Local Scanner
+
+The scanner requires Python 3.10 or later on a POSIX system, such as Linux or macOS. Windows is not a supported runtime. Run it from this repository and keep the room separate from the approved source roots:
+
+```sh
+python3 scripts/scan_sources.py \
+  --room /path/to/project-room \
+  --root /path/to/approved-source-root \
+  --query "board memo"
+```
+
+This is **metadata-only by default**. It inventories paths and file metadata without opening source contents for hashes or previews. Add `--metadata-only` to make that choice explicit. Symlink entries are inventoried without following their targets; a root with a symlink component is refused. Source roots and the room must not overlap. Name directories directly; paths containing `..` are rejected so normalization cannot hide a symlink boundary.
+
+Hashing and previews read source contents and are separate opt-ins. Use them only when those operations are authorized for the selected roots:
+
+```sh
+python3 scripts/scan_sources.py \
+  --room /path/to/project-room \
+  --root /path/to/approved-source-root \
+  --hash-content --snippets
+```
+
+`--hash-content` and `--snippets` can be used independently. `--metadata-only` conflicts with either opt-in. `--no-snippets` disables previews only; it does not cancel `--hash-content`. This changes the earlier default, which read files for hashes and snippets. Metadata-only relevance uses names and paths; local content duplicates cannot be established from size and timestamps alone. Content-addressed provider identities can still support documented metadata hints in a separate connector manifest.
+
+Repeat `--root` for multiple approved directories. Include globs narrow discovery but do not override hidden/default exclusions. The scanner does not accept individual-file inputs or import connector manifests. A named file does not authorize a scan of its parent directory.
+
+Read `scan_summary.md` and `candidate_sources.json` together. Discovery is reported as `complete`, `partial`, or `failed`, with per-input outcomes and errors. Optional hashing/preview failures are recorded separately from coverage. Exit codes are:
+
+| Code | Meaning |
+| --- | --- |
+| `0` | Complete discovery and published artifacts |
+| `2` | Invalid command-line arguments |
+| `3` | Partial discovery; useful results published |
+| `4` | Failed discovery; failure evidence published |
+| `5` | Output or room-compatibility error; inspect the error message |
+
+Do not treat a partial inventory as proof that all approved inputs were inspected.
+
+## Review Decisions and Rescans
+
+After the user approves a known hash-identified version, record that decision with the source ID from the candidate manifest:
+
+```sh
+python3 scripts/review_sources.py \
+  --room /path/to/project-room \
+  --source-id src_SOURCE_ID \
+  --decision approved --scope snapshot \
+  --actor "Mike" --notes "Approved this reviewed version"
+```
+
+Snapshot scope requires a verified content hash, obtained only through authorized hashing. Metadata-only size and timestamps are not proof of an unchanged version. Use `--scope source` only when the user explicitly approves the source across current and future observations. Decisions can also be `excluded` or `deferred`; classifications and notes remain separate from approval.
+
+Rescanning retains decision history. A changed or unknown revision does not silently inherit snapshot approval, and a source unseen during incomplete or differently scoped discovery is not declared missing. Existing authorization still applies when its recorded scope covers the observation.
+
+Candidate artifacts are published as an atomic generation. Supported v1 rooms are backed up before conversion; unknown fields/extensions or inconsistent candidate CSV/JSON cause an actionable refusal instead of being discarded. This check cannot detect coordinated edits to both files, so preserve and inspect the backup. Legacy summary notes are preserved in that backup.
+
+The review CLI commits the authoritative decision before refreshing candidate views. If that refresh fails, the decision still persists and the previous candidate generation remains readable. Inspect `review_decisions.json` before retrying; a subsequent successful scan refreshes the view. The [intake contract](references/intake-contract.md) defines the schemas, version checks, and recovery behavior.
+
+## Tests
+
+Run the focused scanner and room-persistence tests without writing Python bytecode:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -v
+```
+
+These tests check bounded discovery and preservation behavior. They do not establish improved source recall, writing quality, or user trust in real projects.
 
 ## Why The Review Step Matters
 

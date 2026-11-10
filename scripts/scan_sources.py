@@ -1,80 +1,69 @@
 #!/usr/bin/env python3
-"""Scan approved local roots and write project-room candidate source artifacts."""
+"""Inventory approved directory roots; content enrichment is explicitly opt-in."""
 
 from __future__ import annotations
 
 import argparse
-import csv
+import errno
 import fnmatch
 import hashlib
-import json
+import math
 import mimetypes
 import os
 import pwd
 import stat
-from collections import Counter, defaultdict
+import sys
+import uuid
+from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 
+from intake_store import SCHEMA_VERSION, publish_room
 
-SCHEMA_VERSION = "project-room-intake.candidates.v1"
 DEFAULT_EXCLUDES = [
-    ".git",
-    ".hg",
-    ".svn",
-    "node_modules",
-    "__pycache__",
-    ".DS_Store",
-    ".cache",
-    ".venv",
-    "venv",
-    "dist",
-    "build",
+    ".git", ".hg", ".svn", "node_modules", "__pycache__", ".DS_Store",
+    ".cache", ".venv", "venv", "dist", "build",
 ]
-CSV_FIELDS = [
-    "source_id",
-    "source_type",
-    "root",
-    "path",
-    "relative_path",
-    "name",
-    "extension",
-    "mime_type",
-    "size_bytes",
-    "modified_at",
-    "owner",
-    "mode",
-    "sha256",
-    "hash_status",
-    "duplicate_hint",
-    "snippet_status",
-    "snippet",
-    "relevance_score",
-    "relevance_reasons",
-]
+EXIT_CODES = {"complete": 0, "partial": 3, "failed": 4}
+PREVIEW_BYTES = 8192
+PREVIEW_MAX_SIZE = 5 * 1024 * 1024
 
 
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Scan explicitly approved local roots for project-room candidate sources."
-    )
-    parser.add_argument("--root", action="append", required=True, help="Approved local root to scan.")
-    parser.add_argument("--room", required=True, help="Room directory for output artifacts.")
+def absolute_path(value: str | Path) -> Path:
+    # Do not resolve symlinks: that would change the approved boundary.
+    return Path(os.path.abspath(os.path.expanduser(str(value))))
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--root", action="append", required=True, help="Approved directory root. Repeatable.")
+    parser.add_argument("--room", required=True, help="Output room, outside all source roots.")
     parser.add_argument("--query", default="", help="Optional relevance hint.")
-    parser.add_argument("--include-glob", action="append", default=[], help="Include only matching relative paths. Repeatable.")
-    parser.add_argument("--exclude-glob", action="append", default=[], help="Exclude matching relative paths. Repeatable.")
-    parser.add_argument("--hash-max-mb", type=float, default=50.0, help="Maximum file size to hash.")
-    parser.add_argument(
-        "--snippets",
-        action=argparse.BooleanOptionalAction,
-        default=True,
-        help="Capture short text snippets when files look text-like.",
-    )
-    return parser.parse_args()
+    parser.add_argument("--include-glob", action="append", default=[])
+    parser.add_argument("--exclude-glob", action="append", default=[])
+    parser.add_argument("--metadata-only", action="store_true", help="Forbid content reads (the default).")
+    parser.add_argument("--hash-content", action="store_true", help="Read eligible source contents to compute SHA-256.")
+    parser.add_argument("--hash-max-mb", type=float, default=50.0)
+    parser.add_argument("--snippets", action=argparse.BooleanOptionalAction, default=False,
+                        help="Read up to 8192 bytes for short previews. --no-snippets disables only previews.")
+    args = parser.parse_args(argv)
+    if args.metadata_only and (args.hash_content or args.snippets):
+        parser.error("--metadata-only cannot be combined with --hash-content or --snippets")
+    if not math.isfinite(args.hash_max_mb) or args.hash_max_mb < 0:
+        parser.error("--hash-max-mb must be a finite, nonnegative number")
+    if any(".." in Path(os.path.expanduser(value)).parts for value in [*args.root, args.room]):
+        parser.error("root and room paths must not contain '..'; name the intended directory directly")
+    args.root = list(dict.fromkeys(str(absolute_path(root)) for root in args.root))
+    args.room = str(absolute_path(args.room))
+    room = Path(args.room)
+    for root in map(Path, args.root):
+        if room == root or room in root.parents or root in room.parents:
+            parser.error("room and source roots must not overlap; choose a separate output directory")
+    return args
 
 
 def utc_iso(timestamp: float) -> str:
-    return datetime.fromtimestamp(timestamp, timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    return datetime.fromtimestamp(timestamp, timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def owner_name(uid: int) -> str:
@@ -84,259 +73,278 @@ def owner_name(uid: int) -> str:
         return str(uid)
 
 
-def normalize_rel(path: Path) -> str:
-    return path.as_posix()
-
-
-def is_hidden(path: Path) -> bool:
-    return any(part.startswith(".") and part not in {".", ".."} for part in path.parts)
-
-
 def matches_any(rel: str, patterns: list[str]) -> bool:
     return any(fnmatch.fnmatch(rel, pattern) or fnmatch.fnmatch(Path(rel).name, pattern) for pattern in patterns)
 
 
-def excluded_reason(rel: str, path: Path, user_excludes: list[str]) -> str | None:
-    if is_hidden(path):
+def excluded_reason(rel: str, patterns: list[str]) -> str | None:
+    if any(part.startswith(".") for part in Path(rel).parts):
         return "hidden"
     if matches_any(rel, DEFAULT_EXCLUDES):
         return "default_exclude"
-    if matches_any(rel, user_excludes):
+    if matches_any(rel, patterns):
         return "user_exclude"
     return None
 
 
-def included(rel: str, includes: list[str]) -> bool:
-    return not includes or matches_any(rel, includes)
-
-
 def source_id(source_type: str, path: str) -> str:
-    digest = hashlib.sha1(f"{source_type}:{path}".encode("utf-8")).hexdigest()[:16]
-    return f"src_{digest}"
-
-
-def hash_file(path: Path, size: int, limit_bytes: int, is_link: bool) -> tuple[str, str]:
-    if is_link:
-        return "", "symlink_skipped"
-    if size > limit_bytes:
-        return "", "too_large"
-    digest = hashlib.sha256()
-    try:
-        with path.open("rb") as handle:
-            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-                digest.update(chunk)
-        return digest.hexdigest(), "hashed"
-    except OSError:
-        return "", "error"
-
-
-def text_snippet(path: Path, enabled: bool, size: int, is_link: bool) -> tuple[str, str]:
-    if not enabled:
-        return "", "disabled"
-    if is_link:
-        return "", "symlink_skipped"
-    if size > 5 * 1024 * 1024:
-        return "", "too_large"
-    try:
-        data = path.read_bytes()[:8192]
-    except OSError:
-        return "", "error"
-    if b"\x00" in data:
-        return "", "binary_skipped"
-    try:
-        text = data.decode("utf-8")
-    except UnicodeDecodeError:
-        try:
-            text = data.decode("latin-1")
-        except UnicodeDecodeError:
-            return "", "binary_skipped"
-    snippet = " ".join(text.split())[:600]
-    return snippet, "captured" if snippet else "empty"
+    return "src_" + hashlib.sha1(f"{source_type}:{path}".encode("utf-8")).hexdigest()[:16]
 
 
 def query_terms(query: str) -> list[str]:
-    raw = "".join(ch.lower() if ch.isalnum() else " " for ch in query).split()
-    return sorted({term for term in raw if len(term) >= 3})
+    words = "".join(ch.lower() if ch.isalnum() else " " for ch in query).split()
+    return sorted({word for word in words if len(word) >= 3})
 
 
-def relevance(record: dict[str, str], terms: list[str]) -> tuple[int, str]:
-    if not terms:
-        return 0, ""
-    name = record["name"].lower()
-    rel = record["relative_path"].lower()
-    snippet = record["snippet"].lower()
-    score = 0
-    reasons: list[str] = []
+def relevance(record: dict, terms: list[str]) -> tuple[int, str]:
+    score, reasons = 0, []
     for term in terms:
-        if term in name:
-            score += 3
-            reasons.append(f"name:{term}")
-        elif term in rel:
-            score += 2
-            reasons.append(f"path:{term}")
-        elif term in snippet:
-            score += 1
-            reasons.append(f"snippet:{term}")
+        for field, weight, label in (("name", 3, "name"), ("relative_path", 2, "path"), ("snippet", 1, "snippet")):
+            if term in record[field].lower():
+                score += weight
+                reasons.append(f"{label}:{term}")
+                break
     return score, ";".join(reasons)
 
 
-def scan_root(root: Path, args: argparse.Namespace, terms: list[str], exclusions: list[dict[str, str]]) -> list[dict[str, str]]:
-    records: list[dict[str, str]] = []
-    limit_bytes = int(args.hash_max_mb * 1024 * 1024)
-    root = root.expanduser().resolve()
+def error_record(root: Path, path: Path, operation: str, exc: OSError) -> dict:
+    return {"root": str(root), "path": str(path), "operation": operation,
+            "error": type(exc).__name__, "message": str(exc)}
 
-    for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
-        current = Path(dirpath)
-        kept_dirs: list[str] = []
-        for dirname in sorted(dirnames):
-            child = current / dirname
-            rel = normalize_rel(child.relative_to(root))
-            reason = excluded_reason(rel, child.relative_to(root), args.exclude_glob)
-            if reason:
-                exclusions.append({"root": str(root), "path": str(child), "relative_path": rel, "reason": reason, "kind": "directory"})
+
+def open_root(root: Path) -> int:
+    """Open directory components without following any symlink component."""
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    fd = os.open(root.anchor, flags)
+    try:
+        for part in root.parts[1:]:
+            child = os.open(part, flags, dir_fd=fd)
+            os.close(fd)
+            fd = child
+        return fd
+    except BaseException:
+        os.close(fd)
+        raise
+
+
+def fingerprint(info: os.stat_result) -> tuple:
+    return (info.st_dev, info.st_ino, info.st_mode, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+
+
+def enrich(name: str, parent_fd: int, info: os.stat_result, args: argparse.Namespace) -> tuple[dict, OSError | None]:
+    result = {"sha256": "", "hash_status": "not_requested", "snippet": "",
+              "snippet_status": "not_requested", "revision": None, "retrieval_status": "metadata_only"}
+    if not args.hash_content and not args.snippets:
+        return result, None
+    skip = "symlink_skipped" if stat.S_ISLNK(info.st_mode) else "unsupported_type"
+    if not stat.S_ISREG(info.st_mode):
+        if args.hash_content:
+            result["hash_status"] = skip
+        if args.snippets:
+            result["snippet_status"] = skip
+        return result, None
+
+    hash_requested = args.hash_content and info.st_size <= args.hash_max_mb * 1024 * 1024
+    preview_requested = args.snippets and info.st_size <= PREVIEW_MAX_SIZE
+    if args.hash_content:
+        result["hash_status"] = "too_large" if not hash_requested else "error"
+    if args.snippets:
+        result["snippet_status"] = "too_large" if not preview_requested else "error"
+    if not hash_requested and not preview_requested:
+        return result, None
+
+    fd = None
+    try:
+        fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent_fd)
+        before = os.fstat(fd)
+        if not stat.S_ISREG(before.st_mode) or fingerprint(before) != fingerprint(info):
+            raise OSError(errno.ESTALE, "source changed before content read")
+        result["retrieval_status"] = "content_read"
+        digest = hashlib.sha256() if hash_requested else None
+        preview = bytearray()
+        # Bound even hash reads by the observed size, plus one byte to detect growth.
+        remaining = info.st_size + 1 if hash_requested else min(PREVIEW_BYTES, info.st_size)
+        read_count = 0
+        while remaining:
+            chunk = os.read(fd, min(1024 * 1024, remaining))
+            if not chunk:
+                break
+            read_count += len(chunk)
+            remaining -= len(chunk)
+            if digest is not None:
+                digest.update(chunk)
+            if preview_requested and len(preview) < PREVIEW_BYTES:
+                preview.extend(chunk[:PREVIEW_BYTES - len(preview)])
+        after = os.fstat(fd)
+        current = os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
+        if (fingerprint(after) != fingerprint(info) or fingerprint(current) != fingerprint(info)
+                or (hash_requested and read_count != info.st_size)):
+            raise OSError(errno.ESTALE, "source changed during content read")
+        if digest is not None:
+            value = digest.hexdigest()
+            result.update(sha256=value, hash_status="hashed", revision={"kind": "sha256", "value": value})
+        if preview_requested:
+            if b"\x00" in preview:
+                result["snippet_status"] = "binary_skipped"
             else:
-                kept_dirs.append(dirname)
-        dirnames[:] = kept_dirs
+                try:
+                    text = preview.decode("utf-8")
+                except UnicodeDecodeError:
+                    text = preview.decode("latin-1")
+                result["snippet"] = " ".join(text.split())[:600]
+                result["snippet_status"] = "captured" if result["snippet"] else "empty"
+        return result, None
+    except OSError as exc:
+        status = "changed" if exc.errno == errno.ESTALE else "error"
+        result.update(sha256="", snippet="", revision=None, retrieval_status="content_error")
+        if hash_requested:
+            result["hash_status"] = status
+        if preview_requested:
+            result["snippet_status"] = status
+        return result, exc
+    finally:
+        if fd is not None:
+            os.close(fd)
 
-        for filename in sorted(filenames):
-            path = current / filename
-            rel = normalize_rel(path.relative_to(root))
-            relative_path = path.relative_to(root)
-            reason = excluded_reason(rel, relative_path, args.exclude_glob)
-            if reason:
-                exclusions.append({"root": str(root), "path": str(path), "relative_path": rel, "reason": reason, "kind": "file"})
-                continue
-            if not included(rel, args.include_glob):
-                exclusions.append({"root": str(root), "path": str(path), "relative_path": rel, "reason": "not_included", "kind": "file"})
-                continue
 
+def collect_scan(args: argparse.Namespace) -> dict:
+    records, exclusions, coverage_errors, enrichment_errors, inputs = [], [], [], [], []
+    terms = query_terms(args.query)
+    for root_text in args.root:
+        root = Path(root_text)
+        outcome = {"root": str(root), "status": "complete", "inspected_count": 0,
+                   "error_count": 0, "exclusion_count": 0}
+
+        def fail(path: Path, operation: str, exc: OSError) -> None:
+            coverage_errors.append(error_record(root, path, operation, exc))
+            outcome["error_count"] += 1
+
+        def exclude(path: Path, reason: str, kind: str) -> None:
+            exclusions.append({"root": str(root), "path": str(path), "relative_path": str(path.relative_to(root)),
+                               "reason": reason, "kind": kind})
+            outcome["exclusion_count"] += 1
+
+        def visit(directory: Path, directory_fd: int) -> None:
+            # A successful empty listing is coverage; merely opening a root is not.
             try:
-                info = path.lstat()
+                with os.scandir(directory_fd) as iterator:
+                    entries = sorted(iterator, key=lambda entry: entry.name)
             except OSError as exc:
-                exclusions.append({"root": str(root), "path": str(path), "relative_path": rel, "reason": f"stat_error:{exc.__class__.__name__}", "kind": "file"})
-                continue
+                fail(directory, "scandir", exc)
+                return
+            outcome["inspected_count"] += 1
+            for entry in entries:
+                path = directory / entry.name
+                rel = path.relative_to(root).as_posix()
+                reason = excluded_reason(rel, args.exclude_glob)
+                if reason:
+                    # Intentional exclusions need no stat, much less content access.
+                    exclude(path, reason, "entry")
+                    continue
+                try:
+                    info = os.stat(entry.name, dir_fd=directory_fd, follow_symlinks=False)
+                except OSError as exc:
+                    fail(path, "stat", exc)
+                    continue
+                if stat.S_ISDIR(info.st_mode):
+                    child_fd = None
+                    try:
+                        child_fd = os.open(entry.name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=directory_fd)
+                        opened = os.fstat(child_fd)
+                        if (opened.st_dev, opened.st_ino) != (info.st_dev, info.st_ino):
+                            raise OSError(errno.ESTALE, "directory changed before traversal")
+                        visit(path, child_fd)
+                    except OSError as exc:
+                        fail(path, "open_directory", exc)
+                    finally:
+                        if child_fd is not None:
+                            os.close(child_fd)
+                    continue
+                if args.include_glob and not matches_any(rel, args.include_glob):
+                    exclude(path, "not_included", "entry")
+                    continue
+                outcome["inspected_count"] += 1
+                kind = "local_symlink" if stat.S_ISLNK(info.st_mode) else "local_file"
+                record = {
+                    "source_id": source_id(kind, str(path)), "source_type": kind,
+                    "root": str(root), "path": str(path), "relative_path": rel, "name": path.name,
+                    "extension": path.suffix.lower().lstrip("."), "mime_type": mimetypes.guess_type(path.name)[0] or "",
+                    "size_bytes": info.st_size, "modified_at": utc_iso(info.st_mtime),
+                    "owner": owner_name(info.st_uid), "mode": stat.filemode(info.st_mode),
+                    "provider": None, "version": None,
+                    "metadata_token": {"size_bytes": info.st_size, "mtime_ns": info.st_mtime_ns},
+                    "duplicate_hint": "", "relevance_score": 0, "relevance_reasons": "",
+                }
+                enrichment, error = enrich(entry.name, directory_fd, info, args)
+                record.update(enrichment)
+                if error is not None:
+                    enrichment_errors.append(error_record(root, path, "content_read", error))
+                record["relevance_score"], record["relevance_reasons"] = relevance(record, terms)
+                records.append(record)
 
-            is_link = path.is_symlink()
-            source_type = "local_symlink" if is_link else "local_file"
-            mime_type = mimetypes.guess_type(path.name)[0] or ""
-            sha256, hash_status = hash_file(path, info.st_size, limit_bytes, is_link)
-            snippet, snippet_status = text_snippet(path, args.snippets, info.st_size, is_link)
-            record = {
-                "source_id": source_id(source_type, str(path)),
-                "source_type": source_type,
-                "root": str(root),
-                "path": str(path),
-                "relative_path": rel,
-                "name": path.name,
-                "extension": path.suffix.lower().lstrip("."),
-                "mime_type": mime_type,
-                "size_bytes": str(info.st_size),
-                "modified_at": utc_iso(info.st_mtime),
-                "owner": owner_name(info.st_uid),
-                "mode": stat.filemode(info.st_mode),
-                "sha256": sha256,
-                "hash_status": hash_status,
-                "duplicate_hint": "",
-                "snippet_status": snippet_status,
-                "snippet": snippet,
-                "relevance_score": "0",
-                "relevance_reasons": "",
-            }
-            score, reasons = relevance(record, terms)
-            record["relevance_score"] = str(score)
-            record["relevance_reasons"] = reasons
-            records.append(record)
+        root_fd = None
+        try:
+            root_fd = open_root(root)
+            visit(root, root_fd)
+        except OSError as exc:
+            fail(root, "open_root", exc)
+        finally:
+            if root_fd is not None:
+                os.close(root_fd)
+        if outcome["error_count"]:
+            outcome["status"] = "partial" if outcome["inspected_count"] else "failed"
+        inputs.append(outcome)
 
-    return records
+    records = list({record["source_id"]: record for record in records}.values())
+    records.sort(key=lambda record: record["path"])
+    add_duplicate_hints(records)
+    coverage = "complete"
+    if coverage_errors:
+        coverage = "partial" if any(item["inspected_count"] for item in inputs) else "failed"
+    mode = "hash+preview" if args.hash_content and args.snippets else "hash" if args.hash_content else "preview" if args.snippets else "metadata"
+    return {
+        "schema_version": SCHEMA_VERSION, "scan_id": uuid.uuid4().hex,
+        "generated_at": utc_iso(datetime.now(timezone.utc).timestamp()),
+        "roots": list(args.root), "query": args.query,
+        "filters": {"include": list(args.include_glob), "exclude": list(args.exclude_glob)},
+        "content_access": {"mode": mode, "hashes": args.hash_content, "snippets": args.snippets},
+        "coverage": {"status": coverage, "inputs": inputs, "errors": coverage_errors},
+        "enrichment": {"status": "partial" if enrichment_errors else "complete" if args.hash_content or args.snippets else "not_requested",
+                       "errors": enrichment_errors},
+        "candidates": records, "exclusions": exclusions,
+    }
 
 
-def add_duplicate_hints(records: list[dict[str, str]]) -> None:
-    by_hash: dict[str, list[dict[str, str]]] = defaultdict(list)
-    by_size: dict[str, list[dict[str, str]]] = defaultdict(list)
+def add_duplicate_hints(records: list[dict]) -> None:
+    by_hash, by_size = defaultdict(list), defaultdict(list)
     for record in records:
         if record["sha256"]:
             by_hash[record["sha256"]].append(record)
-        else:
+        elif record["size_bytes"]:
             by_size[record["size_bytes"]].append(record)
     for digest, group in by_hash.items():
         if len(group) > 1:
             for record in group:
                 record["duplicate_hint"] = f"same_sha256:{digest[:12]}"
     for size, group in by_size.items():
-        if size != "0" and len(group) > 1:
+        if len(group) > 1:
             for record in group:
-                if not record["duplicate_hint"]:
-                    record["duplicate_hint"] = f"same_size:{size}"
+                record["duplicate_hint"] = f"same_size:{size}"
 
 
-def write_outputs(room: Path, args: argparse.Namespace, records: list[dict[str, str]], exclusions: list[dict[str, str]]) -> None:
-    room.mkdir(parents=True, exist_ok=True)
-    generated_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
-
-    csv_path = room / "candidate_sources.csv"
-    with csv_path.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=CSV_FIELDS)
-        writer.writeheader()
-        writer.writerows(records)
-
-    payload = {
-        "schema_version": SCHEMA_VERSION,
-        "generated_at": generated_at,
-        "roots": [str(Path(root).expanduser().resolve()) for root in args.root],
-        "query": args.query,
-        "candidates": records,
-        "exclusions": exclusions,
-    }
-    (room / "candidate_sources.json").write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
-
-    exclusion_counts = Counter(item["reason"] for item in exclusions)
-    duplicate_count = sum(1 for record in records if record["duplicate_hint"])
-    top = sorted(records, key=lambda item: (-int(item["relevance_score"]), item["relative_path"]))[:10]
-    lines = [
-        "# Scan Summary",
-        "",
-        f"- Generated: {generated_at}",
-        f"- Roots: {len(args.root)}",
-        f"- Candidates: {len(records)}",
-        f"- Exclusions: {len(exclusions)}",
-        f"- Duplicate hints: {duplicate_count}",
-        f"- Snippets: {'enabled' if args.snippets else 'disabled'}",
-        "",
-        "## Exclusion Summary",
-        "",
-    ]
-    if exclusion_counts:
-        lines.extend(f"- {reason}: {count}" for reason, count in sorted(exclusion_counts.items()))
-    else:
-        lines.append("- none")
-    lines.extend(["", "## Top Candidate Matches", ""])
-    if top:
-        lines.extend(
-            f"- score {record['relevance_score']}: `{record['relative_path']}` {record['relevance_reasons']}".rstrip()
-            for record in top
-        )
-    else:
-        lines.append("- none")
-    (room / "scan_summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
-
-
-def main() -> int:
-    args = parse_args()
-    terms = query_terms(args.query)
-    records: list[dict[str, str]] = []
-    exclusions: list[dict[str, str]] = []
-
-    for raw_root in args.root:
-        root = Path(raw_root).expanduser()
-        if not root.exists() or not root.is_dir():
-            exclusions.append({"root": str(root), "path": str(root), "relative_path": "", "reason": "root_unavailable", "kind": "root"})
-            continue
-        records.extend(scan_root(root, args, terms, exclusions))
-
-    add_duplicate_hints(records)
-    write_outputs(Path(args.room).expanduser(), args, records, exclusions)
-    print(f"Wrote {len(records)} candidates and {len(exclusions)} exclusions to {Path(args.room).expanduser()}")
-    return 0
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
+    payload = collect_scan(args)
+    try:
+        publish_room(Path(args.room), payload)
+    except (OSError, ValueError) as exc:
+        print(f"Room not published: {exc}", file=sys.stderr)
+        return 5
+    status = payload["coverage"]["status"]
+    print(f"Discovery {status}: {len(payload['candidates'])} candidates, "
+          f"{len(payload['coverage']['errors'])} coverage errors, "
+          f"{len(payload['enrichment']['errors'])} enrichment errors. Room: {args.room}")
+    return EXIT_CODES[status]
 
 
 if __name__ == "__main__":
