@@ -25,7 +25,7 @@ LEGACY_FIELDS = [
 ]
 CSV_FIELDS = LEGACY_FIELDS + [
     "revision", "metadata_token", "provider", "version", "retrieval_status",
-    "observation_status", "last_observed_at", "observation_scope", "review", "extensions",
+    "discovered_via", "observation_status", "last_observed_at", "observation_scope", "review", "extensions",
 ]
 CANDIDATE_FIELDS = set(CSV_FIELDS)
 CSV_FIELDS = ["scan_id", "generation_id", "coverage_status"] + CSV_FIELDS
@@ -33,7 +33,7 @@ DECISIONS = {"approved", "excluded", "deferred"}
 HASH_STATUSES = {"not_requested", "hashed", "too_large", "symlink_skipped", "unsupported_type", "error", "changed"}
 SNIPPET_STATUSES = {"not_requested", "captured", "empty", "binary_skipped", "too_large", "symlink_skipped", "unsupported_type", "error", "changed", "disabled"}
 RETRIEVAL_STATUSES = {"metadata_only", "content_read", "content_error", "not_retrieved", "retrieved", "retrieval_error"}
-PAYLOAD_FIELDS = {"schema_version", "scan_id", "generated_at", "roots", "query", "filters", "content_access",
+PAYLOAD_FIELDS = {"schema_version", "scan_id", "generated_at", "roots", "files", "query", "filters", "content_access",
                   "coverage", "enrichment", "candidates", "exclusions", "review_history_count", "publication", "extensions"}
 
 
@@ -86,9 +86,109 @@ def _choice(value, choices) -> bool:
     return isinstance(value, str) and value in choices
 
 
+def _object(value, required: set[str], allowed: set[str], label: str) -> None:
+    if not isinstance(value, dict) or not required <= set(value) or set(value) - allowed:
+        raise ValueError(f"Invalid {label}: missing or unsupported fields")
+
+
+def _integer(value, minimum: int | None = 0) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and (minimum is None or value >= minimum)
+
+
+def _absolute_path(value) -> bool:
+    return isinstance(value, str) and bool(value) and Path(value).is_absolute() and ".." not in Path(value).parts
+
+
+def _string_list(value, label: str, absolute: bool = False) -> None:
+    if not isinstance(value, list) or any(not isinstance(item, str) or (absolute and not _absolute_path(item)) for item in value):
+        raise ValueError(f"{label} must be a list of {'absolute paths' if absolute else 'strings'}")
+
+
+def _validate_filters(value) -> None:
+    _object(value, {"include", "exclude"}, {"include", "exclude"}, "filters")
+    for field in ("include", "exclude"):
+        _string_list(value[field], "filters." + field)
+
+
+def _validate_scope(value) -> None:
+    if value is None:
+        return
+    _object(value, {"roots", "filters"}, {"roots", "files", "filters"}, "observation scope")
+    _string_list(value["roots"], "observation_scope.roots")
+    _validate_filters(value["filters"])
+    if "files" in value:
+        _string_list(value["files"], "observation_scope.files", absolute=True)
+
+
+def _validate_input_reference(value, label: str) -> None:
+    _object(value, {"kind", "path"}, {"kind", "path"}, label)
+    if not _choice(value["kind"], {"root", "file"}) or not _absolute_path(value["path"]):
+        raise ValueError(f"{label} requires root/file kind and an absolute path")
+
+
+def _validate_coverage_items(coverage: dict, enrichment: dict, exclusions: list) -> None:
+    for outcome in coverage["inputs"]:
+        base = {"root", "status", "inspected_count", "error_count", "exclusion_count"}
+        _object(outcome, base, base | {"kind", "path"}, "input outcome")
+        if not isinstance(outcome["root"], str) or not _choice(outcome["status"], {"complete", "partial", "failed"}):
+            raise ValueError("Input outcomes require a root label and coverage status")
+        if any(not _integer(outcome[field]) for field in ("inspected_count", "error_count", "exclusion_count")):
+            raise ValueError("Input counts must be nonnegative integers")
+        if "kind" in outcome or "path" in outcome:
+            _validate_input_reference({key: outcome[key] for key in ("kind", "path") if key in outcome}, "input outcome")
+    for error in coverage["errors"] + enrichment["errors"]:
+        fields = {"path", "operation", "error", "message"}
+        _object(error, fields, fields | {"root"}, "error")
+        if any(not isinstance(value, str) for value in error.values()):
+            raise ValueError("Error fields must be strings")
+    for exclusion in exclusions:
+        fields = {"root", "path", "relative_path", "reason", "kind"}
+        _object(exclusion, fields, fields, "exclusion")
+        if any(not isinstance(value, str) for value in exclusion.values()):
+            raise ValueError("Exclusion fields must be strings")
+
+
+def _validate_review_view(value) -> None:
+    required = {"status", "reason", "decision_id"}
+    _object(value, required, required | {"scope", "actor", "notes", "classification", "recorded_at"}, "review view")
+    if not _choice(value["status"], {"unreviewed", "approved", "excluded", "deferred", "needs_review", "unavailable"}):
+        raise ValueError("Invalid effective review status")
+    if not _choice(value["reason"], {"no_decision", "source_scope", "matching_revision", "revision_unknown", "revision_changed", "missing", "unobserved"}):
+        raise ValueError("Invalid effective review reason")
+    if value["decision_id"] is not None and not isinstance(value["decision_id"], str):
+        raise ValueError("Review decision ID must be text or null")
+    if "scope" in value and not _choice(value["scope"], {"snapshot", "source"}):
+        raise ValueError("Invalid effective review scope")
+    for field in ("actor", "notes", "recorded_at", "classification"):
+        if field in value and not (field == "classification" and value[field] is None) and not isinstance(value[field], str):
+            raise ValueError("Invalid review-view " + field)
+
+
+def _validate_provenance(candidate: dict, payload: dict) -> None:
+    if "discovered_via" not in candidate:
+        return  # Older v2 observations did not record per-input provenance.
+    provenance = candidate["discovered_via"]
+    if not isinstance(provenance, list) or not provenance:
+        raise ValueError("discovered_via must contain at least one input reference")
+    scope = candidate.get("observation_scope") if candidate.get("observation_status") in {"missing", "unobserved"} else payload
+    for reference in provenance:
+        _validate_input_reference(reference, "discovered_via entry")
+        if scope is not None:
+            field = "roots" if reference["kind"] == "root" else "files"
+            if reference["path"] not in scope.get(field, []):
+                raise ValueError("discovered_via refers outside the recorded input scope")
+        if candidate["source_type"] in {"local_file", "local_symlink"}:
+            if not _absolute_path(candidate["path"]):
+                raise ValueError("Local provenance requires an absolute source path")
+            if reference["kind"] == "file" and candidate["path"] != reference["path"]:
+                raise ValueError("Exact-file provenance must name the observed file")
+            if reference["kind"] == "root" and not Path(candidate["path"]).is_relative_to(reference["path"]):
+                raise ValueError("Root provenance must contain the observed file")
+
+
 def validate_payload(payload: dict) -> None:
     """Validate the small operational contract without a JSON Schema dependency."""
-    if payload.get("schema_version") != SCHEMA_VERSION:
+    if not isinstance(payload, dict) or payload.get("schema_version") != SCHEMA_VERSION:
         raise ValueError("Expected candidate schema " + SCHEMA_VERSION)
     if set(payload) - PAYLOAD_FIELDS:
         raise ValueError("Unsupported candidate payload fields; preserve and migrate explicitly")
@@ -99,28 +199,40 @@ def validate_payload(payload: dict) -> None:
             raise ValueError(f"Missing or invalid {field}")
     if not isinstance(payload.get("roots"), list) or not all(isinstance(v, str) for v in payload["roots"]):
         raise ValueError("roots must be a list of paths")
+    if "files" in payload:
+        _string_list(payload["files"], "files", absolute=True)
     if not isinstance(payload.get("query"), str):
         raise ValueError("query must be a string")
-    filters = payload.get("filters", {})
-    if not isinstance(filters, dict) or set(filters) != {"include", "exclude"} or any(not isinstance(filters.get(k), list) or not all(isinstance(v, str) for v in filters[k]) for k in ("include", "exclude")):
-        raise ValueError("filters must contain include and exclude lists")
+    _validate_filters(payload.get("filters"))
     access = payload.get("content_access", {})
+    _object(access, {"mode", "hashes", "snippets"}, {"mode", "hashes", "snippets"}, "content access")
     modes = {"metadata": (False, False), "hash": (True, False), "preview": (False, True), "hash+preview": (True, True)}
     if not isinstance(access, dict) or not _choice(access.get("mode"), modes) or any(not isinstance(access.get(k), bool) for k in ("hashes", "snippets")):
         raise ValueError("content_access must report mode, hashes, and snippets")
     if (access["hashes"], access["snippets"]) != modes[access["mode"]]:
         raise ValueError("Content-access mode contradicts selected enrichment")
     coverage = payload.get("coverage", {})
+    _object(coverage, {"status", "inputs", "errors"}, {"status", "inputs", "errors"}, "coverage")
     if not isinstance(coverage, dict) or not _choice(coverage.get("status"), {"complete", "partial", "failed"}) or not isinstance(coverage.get("inputs"), list) or not isinstance(coverage.get("errors"), list):
         raise ValueError("Invalid discovery coverage")
     enrichment = payload.get("enrichment", {})
+    _object(enrichment, {"status", "errors"}, {"status", "errors"}, "enrichment")
     if not isinstance(enrichment, dict) or not _choice(enrichment.get("status"), {"not_requested", "complete", "partial"}) or not isinstance(enrichment.get("errors"), list):
         raise ValueError("Invalid enrichment status")
-    for error in coverage["errors"] + enrichment["errors"]:
-        if not isinstance(error, dict) or any(not isinstance(error.get(k), str) for k in ("path", "operation", "error", "message")):
-            raise ValueError("Errors require path, operation, error, and message")
     if not isinstance(payload.get("exclusions"), list) or not isinstance(payload.get("candidates"), list):
         raise ValueError("candidates and exclusions must be lists")
+    _validate_coverage_items(coverage, enrichment, payload["exclusions"])
+    for outcome in coverage["inputs"]:
+        if "kind" in outcome:
+            field = "roots" if outcome["kind"] == "root" else "files"
+            if outcome["path"] not in payload.get(field, []) or outcome["root"] != outcome["path"]:
+                raise ValueError("Input outcome must identify one declared input")
+    if "publication" in payload:
+        _object(payload["publication"], {"generation_id", "published_at"}, {"generation_id", "published_at"}, "publication")
+        if any(not isinstance(value, str) or not value for value in payload["publication"].values()):
+            raise ValueError("Publication fields must be nonempty strings")
+    if "review_history_count" in payload and not _integer(payload["review_history_count"]):
+        raise ValueError("review_history_count must be a nonnegative integer")
     seen = set()
     for candidate in payload["candidates"]:
         if not isinstance(candidate, dict) or any(not isinstance(candidate.get(k), str) or not candidate[k] for k in ("source_id", "source_type", "path")):
@@ -141,6 +253,7 @@ def validate_payload(payload: dict) -> None:
                 raise ValueError("Candidate is missing " + field)
         if candidate["metadata_token"] is not None:
             token = candidate["metadata_token"]
+            _object(token, {"size_bytes", "mtime_ns"}, {"size_bytes", "mtime_ns"}, "metadata token")
             if not isinstance(token, dict) or any(not isinstance(token.get(k), int) or isinstance(token[k], bool) for k in ("size_bytes", "mtime_ns")) or token["size_bytes"] < 0:
                 raise ValueError("metadata_token must contain integer size_bytes and mtime_ns")
         if any(candidate[k] is not None and not isinstance(candidate[k], str) for k in ("provider", "version")):
@@ -153,6 +266,13 @@ def validate_payload(payload: dict) -> None:
         for field in ("modified_at", "owner", "mode"):
             if field in candidate and candidate[field] is not None and not isinstance(candidate[field], str):
                 raise ValueError(field + " must be text or null")
+        for field in ("root", "relative_path", "name", "extension", "mime_type", "sha256", "duplicate_hint", "snippet", "relevance_reasons", "last_observed_at"):
+            if field in candidate and not isinstance(candidate[field], str):
+                raise ValueError(field + " must be text")
+        if "observation_scope" in candidate:
+            _validate_scope(candidate["observation_scope"])
+        if "review" in candidate:
+            _validate_review_view(candidate["review"])
         if "observation_status" in candidate and not _choice(candidate["observation_status"], {"observed", "missing", "unobserved"}):
             raise ValueError("Invalid observation status")
         for field in ("size_bytes", "relevance_score"):
@@ -160,6 +280,7 @@ def validate_payload(payload: dict) -> None:
                 continue
             if not isinstance(candidate.get(field), int) or isinstance(candidate[field], bool) or candidate[field] < 0:
                 raise ValueError(f"Candidate {field} must be a nonnegative integer")
+        _validate_provenance(candidate, payload)
 
 
 def _load_reviews(room: Path) -> dict:
@@ -304,7 +425,10 @@ def _ensure_layout(room: Path, previous: dict | None) -> None:
 def _scope(payload: dict) -> dict | None:
     if "filters" not in payload:
         return None
-    return {"roots": sorted(set(payload["roots"])), "filters": {k: sorted(set(payload["filters"][k])) for k in ("include", "exclude")}}
+    scope = {"roots": sorted(set(payload["roots"])), "filters": {k: sorted(set(payload["filters"][k])) for k in ("include", "exclude")}}
+    if payload.get("files"):
+        scope["files"] = sorted(set(payload["files"]))
+    return scope
 
 
 def _preserve_extensions(previous: dict, incoming: dict) -> None:

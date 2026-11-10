@@ -1,0 +1,379 @@
+{
+  "local_file": {
+    "schema_version": "project-room-intake.candidates.v2",
+    "scan_id": "fixture-local-file",
+    "generated_at": "2026-11-10T12:00:00Z",
+    "roots": [
+      "/fixtures/local"
+    ],
+    "files": [],
+    "query": "approved",
+    "filters": {
+      "include": [],
+      "exclude": []
+    },
+    "content_access": {
+      "mode": "hash",
+      "hashes": true,
+      "snippets": false
+    },
+    "coverage": {
+      "status": "complete",
+      "inputs": [
+        {
+          "root": "/fixtures/local",
+          "kind": "root",
+          "path": "/fixtures/local",
+          "status": "complete",
+          "inspected_count": 2,
+          "error_count": 0,
+          "exclusion_count": 0
+        }
+      ],
+      "errors": []
+    },
+    "enrichment": {
+      "status": "complete",
+      "errors": []
+    },
+    "exclusions": [],
+    "candidates": [
+      {
+        "source_id": "src_fixture_local",
+        "source_type": "local_file",
+        "root": "/fixtures/local",
+        "path": "/fixtures/local/evidence.txt",
+        "relative_path": "evidence.txt",
+        "name": "evidence.txt",
+        "extension": "txt",
+        "mime_type": "text/plain",
+        "size_bytes": 29,
+        "modified_at": "2026-11-09T12:00:00Z",
+        "owner": "fixture",
+        "mode": "-rw-r--r--",
+        "sha256": "495e87f6edb4d27ac6793dd9f467f4ae47080b42b975f7e35e7d2e691058d4af",
+        "hash_status": "hashed",
+        "duplicate_hint": "",
+        "snippet_status": "not_requested",
+        "snippet": "",
+        "relevance_score": 0,
+        "relevance_reasons": "",
+        "revision": {
+          "kind": "sha256",
+          "value": "495e87f6edb4d27ac6793dd9f467f4ae47080b42b975f7e35e7d2e691058d4af"
+        },
+        "metadata_token": {
+          "size_bytes": 29,
+          "mtime_ns": 1794225600000000000
+        },
+        "provider": null,
+        "version": null,
+        "retrieval_status": "content_read",
+        "discovered_via": [
+          {
+            "kind": "root",
+            "path": "/fixtures/local"
+          }
+        ]
+      }
+    ]
+  },
+  "local_symlink": {
+    "schema_version": "project-room-intake.candidates.v2",
+    "scan_id": "fixture-local-symlink",
+    "generated_at": "2026-11-10T12:00:00Z",
+    "roots": [
+      "/fixtures/local"
+    ],
+    "files": [],
+    "query": "approved",
+    "filters": {
+      "include": [],
+      "exclude": []
+    },
+    "content_access": {
+      "mode": "metadata",
+      "hashes": false,
+      "snippets": false
+    },
+    "coverage": {
+      "status": "complete",
+      "inputs": [
+        {
+          "root": "/fixtures/local",
+          "kind": "root",
+          "path": "/fixtures/local",
+          "status": "complete",
+          "inspected_count": 2,
+          "error_count": 0,
+          "exclusion_count": 0
+        }
+      ],
+      "errors": []
+    },
+    "enrichment": {
+      "status": "not_requested",
+      "errors": []
+    },
+    "exclusions": [],
+    "candidates": [
+      {
+        "source_id": "src_fixture_symlink",
+        "source_type": "local_symlink",
+        "root": "/fixtures/local",
+        "path": "/fixtures/local/shortcut",
+        "relative_path": "shortcut",
+        "name": "shortcut",
+        "extension": "",
+        "mime_type": "",
+        "size_bytes": 22,
+        "modified_at": "2026-11-09T12:00:00Z",
+        "owner": "fixture",
+        "mode": "lrwxr-xr-x",
+        "sha256": "",
+        "hash_status": "not_requested",
+        "duplicate_hint": "",
+        "snippet_status": "not_requested",
+        "snippet": "",
+        "relevance_score": 0,
+        "relevance_reasons": "",
+        "revision": null,
+        "metadata_token": {
+          "size_bytes": 22,
+          "mtime_ns": 1794225600000000000
+        },
+        "provider": null,
+        "version": null,
+        "retrieval_status": "metadata_only",
+        "discovered_via": [
+          {
+            "kind": "root",
+            "path": "/fixtures/local"
+          }
+        ]
+      }
+    ]
+  },
+  "connector_not_retrieved": {
+    "schema_version": "project-room-intake.candidates.v2",
+    "scan_id": "fixture-connector-metadata",
+    "generated_at": "2026-11-10T12:00:00Z",
+    "roots": [],
+    "files": [],
+    "query": "approved",
+    "filters": {
+      "include": [],
+      "exclude": []
+    },
+    "content_access": {
+      "mode": "metadata",
+      "hashes": false,
+      "snippets": false
+    },
+    "coverage": {
+      "status": "complete",
+      "inputs": [],
+      "errors": []
+    },
+    "enrichment": {
+      "status": "not_requested",
+      "errors": []
+    },
+    "exclusions": [],
+    "candidates": [
+      {
+        "source_id": "src_fixture_remote",
+        "source_type": "connector",
+        "root": "fixture-manifest",
+        "path": "example://documents/123",
+        "relative_path": "",
+        "name": "Source record",
+        "extension": "",
+        "mime_type": "",
+        "size_bytes": null,
+        "modified_at": null,
+        "owner": null,
+        "mode": null,
+        "sha256": "",
+        "hash_status": "not_requested",
+        "duplicate_hint": "",
+        "snippet_status": "not_requested",
+        "snippet": "",
+        "relevance_score": 0,
+        "relevance_reasons": "",
+        "revision": null,
+        "metadata_token": null,
+        "provider": "example",
+        "version": "etag-fixture-1",
+        "retrieval_status": "not_retrieved",
+        "extensions": {
+          "example.object": {
+            "id": "123",
+            "etag": "etag-fixture-1"
+          }
+        }
+      }
+    ]
+  },
+  "connector_retrieved": {
+    "schema_version": "project-room-intake.candidates.v2",
+    "scan_id": "fixture-connector-retrieved",
+    "generated_at": "2026-11-10T12:00:00Z",
+    "roots": [],
+    "files": [],
+    "query": "approved",
+    "filters": {
+      "include": [],
+      "exclude": []
+    },
+    "content_access": {
+      "mode": "hash",
+      "hashes": true,
+      "snippets": false
+    },
+    "coverage": {
+      "status": "complete",
+      "inputs": [],
+      "errors": []
+    },
+    "enrichment": {
+      "status": "complete",
+      "errors": []
+    },
+    "exclusions": [],
+    "candidates": [
+      {
+        "source_id": "src_fixture_remote",
+        "source_type": "connector",
+        "root": "fixture-manifest",
+        "path": "example://documents/123",
+        "relative_path": "",
+        "name": "Source record",
+        "extension": "",
+        "mime_type": "",
+        "size_bytes": 29,
+        "modified_at": null,
+        "owner": null,
+        "mode": null,
+        "sha256": "495e87f6edb4d27ac6793dd9f467f4ae47080b42b975f7e35e7d2e691058d4af",
+        "hash_status": "hashed",
+        "duplicate_hint": "",
+        "snippet_status": "not_requested",
+        "snippet": "",
+        "relevance_score": 0,
+        "relevance_reasons": "",
+        "revision": {
+          "kind": "sha256",
+          "value": "495e87f6edb4d27ac6793dd9f467f4ae47080b42b975f7e35e7d2e691058d4af"
+        },
+        "metadata_token": null,
+        "provider": "example",
+        "version": "etag-fixture-1",
+        "retrieval_status": "retrieved",
+        "extensions": {
+          "example.object": {
+            "id": "123",
+            "etag": "etag-fixture-1"
+          }
+        }
+      }
+    ]
+  },
+  "partial_discovery": {
+    "schema_version": "project-room-intake.candidates.v2",
+    "scan_id": "fixture-partial",
+    "generated_at": "2026-11-10T12:00:00Z",
+    "roots": [
+      "/fixtures/local",
+      "/fixtures/missing"
+    ],
+    "files": [],
+    "query": "approved",
+    "filters": {
+      "include": [],
+      "exclude": []
+    },
+    "content_access": {
+      "mode": "hash",
+      "hashes": true,
+      "snippets": false
+    },
+    "coverage": {
+      "status": "partial",
+      "inputs": [
+        {
+          "root": "/fixtures/local",
+          "kind": "root",
+          "path": "/fixtures/local",
+          "status": "complete",
+          "inspected_count": 2,
+          "error_count": 0,
+          "exclusion_count": 0
+        },
+        {
+          "root": "/fixtures/missing",
+          "kind": "root",
+          "path": "/fixtures/missing",
+          "status": "failed",
+          "inspected_count": 0,
+          "error_count": 1,
+          "exclusion_count": 0
+        }
+      ],
+      "errors": [
+        {
+          "root": "/fixtures/missing",
+          "path": "/fixtures/missing",
+          "operation": "open_root",
+          "error": "FileNotFoundError",
+          "message": "Synthetic missing approved root"
+        }
+      ]
+    },
+    "enrichment": {
+      "status": "complete",
+      "errors": []
+    },
+    "exclusions": [],
+    "candidates": [
+      {
+        "source_id": "src_fixture_local",
+        "source_type": "local_file",
+        "root": "/fixtures/local",
+        "path": "/fixtures/local/evidence.txt",
+        "relative_path": "evidence.txt",
+        "name": "evidence.txt",
+        "extension": "txt",
+        "mime_type": "text/plain",
+        "size_bytes": 29,
+        "modified_at": "2026-11-09T12:00:00Z",
+        "owner": "fixture",
+        "mode": "-rw-r--r--",
+        "sha256": "495e87f6edb4d27ac6793dd9f467f4ae47080b42b975f7e35e7d2e691058d4af",
+        "hash_status": "hashed",
+        "duplicate_hint": "",
+        "snippet_status": "not_requested",
+        "snippet": "",
+        "relevance_score": 0,
+        "relevance_reasons": "",
+        "revision": {
+          "kind": "sha256",
+          "value": "495e87f6edb4d27ac6793dd9f467f4ae47080b42b975f7e35e7d2e691058d4af"
+        },
+        "metadata_token": {
+          "size_bytes": 29,
+          "mtime_ns": 1794225600000000000
+        },
+        "provider": null,
+        "version": null,
+        "retrieval_status": "content_read",
+        "discovered_via": [
+          {
+            "kind": "root",
+            "path": "/fixtures/local"
+          }
+        ]
+      }
+    ]
+  }
+}

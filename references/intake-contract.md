@@ -4,7 +4,7 @@ This reference defines stable artifacts for project/data-room intake. The room i
 
 ## Candidate Discovery Artifacts
 
-`scripts/scan_sources.py` publishes these artifacts for approved local directory roots:
+`scripts/scan_sources.py` publishes these artifacts for approved local directory roots and exact-file inputs:
 
 - `candidate_sources.csv`: Spreadsheet-friendly candidate source table.
 - `candidate_sources.json`: Authoritative machine-readable observations in `project-room-intake.candidates.v2`, including input scope, content-access mode, discovery coverage, errors, candidates, exclusions, and joined review status.
@@ -15,13 +15,15 @@ Each CSV row includes `scan_id`, `generation_id`, and `coverage_status`; an empt
 
 The machine contracts are [candidates.v2.schema.json](schemas/candidates.v2.schema.json) and [reviews.v1.schema.json](schemas/reviews.v1.schema.json). JSON is the authoritative structured record; CSV is a review/export view, not the place to store approval edits. The scanner does not import connector manifests or CSV edits.
 
+[Representative fixtures](../tests/fixtures/contracts/candidates.json) cover local files, local symlinks, unretrieved and retrieved connector metadata, and partial discovery. `scripts/intake_store.py` validates the operational contract before publishing; malformed nested metadata must not replace a reviewed room. The fixtures demonstrate representation and preservation, not a connector retrieval capability.
+
 Candidate observations retain these source fields:
 
 - `source_id`: Stable ID derived from source type and local path or external URI.
 - `source_type`: `local_file`, `local_symlink`, or manifest-defined connector/blob type.
-- `root`: Approved scan root or manifest source.
+- `root`: Directory root associated with the candidate's first successful observation, or manifest source. For an exact-file observation, its parent is a display base only, not an authorization to scan that directory.
 - `path`: Absolute local path, or stable external URI/key for manifest rows.
-- `relative_path`: Path relative to its approved root when local.
+- `relative_path`: Path relative to the first observation's display base when local; an exact-file observation uses its basename.
 - `name`: Basename or object name.
 - `extension`: Lowercase extension without the leading dot.
 - `mime_type`: Best-effort MIME type.
@@ -43,6 +45,7 @@ Additional candidate fields are:
 | --- | --- |
 | `revision` | `null` when content revision is unknown, or `{ "kind": "sha256", "value": "<64 lowercase hexadecimal characters>" }` for a verified content revision |
 | `metadata_token` | Metadata observation used to notice changes; never proof of identical content |
+| `discovered_via` | Optional list of successful input routes with `kind` (`root` or `file`) and `path` (the absolute approved input); retain repeated input occurrences |
 | `provider`, `version`, `retrieval_status` | Provider/retrieval metadata; unknown values must not be fabricated |
 | `observation_status` | `observed`, `missing`, or `unobserved` |
 | `last_observed_at`, `observation_scope` | Last successful observation and the scan scope associated with it |
@@ -51,21 +54,29 @@ Additional candidate fields are:
 
 Revision evidence and the joined review state keep observations separate from authorization. `review.status` can be `unreviewed`, `approved`, `excluded`, `deferred`, `needs_review`, or `unavailable`; `review.reason` explains its applicability. A classification describes relevance or use; it does not approve a source. A prior decision remains in history even when its scope does not apply to the current observation.
 
+Top-level `roots` records directory inputs, and optional `files` records exact-file inputs. Candidate `discovered_via` preserves the successful routes when inputs overlap or repeat; one source still has one candidate record. `root` and `relative_path` retain the first observation's display base rather than replacing that complete provenance. Each coverage input outcome adds `kind` and `path` so file and directory routes are distinguishable.
+
+Older v2 artifacts without `files` remain valid; an absent or empty file list means the same scope. Scope comparison treats roots, files, and include/exclude patterns as sets, while provenance and per-input outcomes preserve repeated occurrences. Retained missing/unobserved candidates keep their last observed scope and provenance. Do not invent `discovered_via` for older v2 or v1 artifacts.
+
 ## Content Access and Coverage
 
 The local scanner is metadata-only by default. It may inspect filesystem metadata but must not open source contents to hash, preview, or parse them. `--metadata-only` makes the mode explicit and conflicts with `--hash-content` and `--snippets`. Those two flags independently request content reads and require authorization for their use. `--no-snippets` only disables previews; it does not disable an explicitly requested hash.
 
 Metadata-only relevance uses names and paths. Local size and modification time cannot establish content equality or a known snapshot revision. Exact provider content identities, when available as metadata, can support duplicate hints if their semantics and provenance are recorded; an arbitrary etag or object ID is not automatically a content checksum.
 
-Roots must be directories without symlink components. Name root and room directories directly; paths containing `..` are rejected. Source entry symlinks are inventoried without reading targets. The room and source roots must not overlap. Include globs narrow the discovered set and do not override hidden/default exclusions. An individually approved file must be handled as a separate reference; the scanner has no `--file` route, and file approval does not authorize enumerating its parent.
+Supply at least one `--root` or `--file`; both flags are repeatable and can be combined. Roots must be directories without symlink components. An exact-file input opens only its ancestor directories and inspects the named entry, without enumerating or inspecting siblings. A directory selected through `--file` is a coverage error, never a recursive root. Source entry symlinks, including exact-file symlinks, are inventoried without reading their targets; symlink ancestors are rejected. Name inputs and the room directly; paths containing `..` are rejected. The room and source roots must not overlap, and exact-file inputs must remain outside the room.
+
+For a recursive root, hidden/default exclusions prune descendants before include filtering. Explicitly naming a hidden root permits entering that root, not bypassing its descendant filters. An exact-file input bypasses hidden/default exclusions for that named path, including excluded ancestor directory names. Includes narrow both routes: root-relative paths/basenames for recursive entries, absolute paths/basenames for exact files.
+
+User exclusions take precedence for roots, recursive entries, and exact files. They match absolute paths/basenames, ancestor paths/names, and paths relative to any containing declared root. Ancestor matching stops at the outermost containing root, including that root's name; ancestors above an approved root are not candidates. An exact file outside all declared roots uses its full ancestor chain. These checks use path strings before filesystem access. A user-excluded root is intentionally excluded without opening it, and a user-excluded subtree cannot be restored by naming one of its files through `--file`. Repeating a file input or discovering it through a root does not authorize any sibling access through the file route.
 
 Coverage distinguishes:
 
 | State | Meaning |
 | --- | --- |
-| `complete` | Every approved directory input was inspected under the declared filtering policy, including an accessible empty directory |
-| `partial` | Some inputs or entries could be inspected, while discovery errors prevented complete coverage |
-| `failed` | No approved input could be inspected |
+| `complete` | Every approved input was inspected or intentionally excluded under the declared filtering policy, without coverage errors; an accessible empty root or all-excluded input set can be complete |
+| `partial` | Some input scope was inspected or intentionally excluded, while discovery errors prevented complete coverage |
+| `failed` | No input completed and errors prevented all inspection |
 
 Per-input outcomes and structured errors explain coverage. Deliberate exclusions do not themselves make a scan partial. Optional hash or preview errors are enrichment failures and do not themselves mean directory discovery failed. Do not describe a partial result as exhaustive or silently mark an unobserved source missing.
 
@@ -77,9 +88,13 @@ Use `scripts/review_sources.py` to record explicit user decisions. It requires `
 
 Each decision records `decision_id`, `source_id`, `decision`, `scope`, `revision`, `actor`, `notes`, `classification`, and `recorded_at`. Decisions append to history. Omitted notes and classification retain the earlier values for that source. The CLI joins the relevant decision to generated observations without replacing the original approval record.
 
-- **Snapshot scope** applies only to the known, verified content revision selected by the user. Every snapshot-scoped decision, including exclusion or deferral, requires an expected SHA-256 from the exact manifest/version reviewed and a matching verified current revision. The API receives that reviewed `expected_revision` as `{ "kind": "sha256", "value": "<64 lowercase hexadecimal characters>" }`; the CLI receives its value through `--expected-sha256`. It compares the expected and current revisions under the room lock before saving the decision. Missing or mismatched expectations fail. This prevents a decision made for version A from attaching to version B after a rescan. Do not replace the reviewed expectation with a freshly discovered hash. A size/mtime match is insufficient, and metadata-only discovery must not hash content to satisfy this requirement. Changed or unknown revisions do not silently inherit snapshot approval.
-- **Source scope** explicitly applies across current and future observations of that source. Use it only when the user authorizes that broader scope; do not substitute it merely because a snapshot cannot be verified.
+- **Snapshot scope** binds a decision to exact verified content within the user's authorization. Every snapshot-scoped decision, including exclusion or deferral, requires an expected SHA-256 and a matching verified current revision. The API receives `expected_revision` as `{ "kind": "sha256", "value": "<64 lowercase hexadecimal characters>" }`; the CLI receives its value through `--expected-sha256`. The expected/current comparison occurs under the room lock before saving; missing or mismatched expectations fail. When the user approves a previously presented snapshot or manifest, the expectation must remain that approved version's hash, never a rescan's replacement. When the user preauthorizes a current named source and its retrieval/hashing, use the exact content hash observed during that authorized operation and record its agent-observed provenance; do not claim the user reviewed a hash or manifest. The same mismatch protection applies if the room changes before that decision is saved. A size/mtime match is insufficient, and metadata-only discovery must not hash content to satisfy this requirement. Changed or unknown revisions do not silently inherit snapshot approval.
+- **Source scope** explicitly applies across current and future observations of that source. Use it only when the user authorizes that broader scope; current-file preauthorization does not imply it. Do not substitute it merely because a snapshot cannot be verified.
 - **Unobserved versus missing:** a complete scan of the same source scope can establish that a prior source is missing. Partial coverage or a changed scan scope cannot. Preserve earlier decisions and notes in either case.
+
+Record permission now; verify the version separately. When a metadata-only room has no verified hash, immediately preserve the exact current-use instruction in `provenance_ledger.md`, with the source, use limits, actor, time (unknowns explicit), and **version unverified**. Reuse that contemporaneous permission to read/use the current named source within its limits while the version-bound CLI decision remains unresolved. Do not fabricate a snapshot approval or substitute future source-scope approval.
+
+Obtain version evidence only through already-authorized retrieval/hashing. If recording a snapshot requires verification that is not authorized, ask only for the missing verification or scope decision, not for approval of the source again. Historical snapshot approval is different: it does not authorize changed or unverified current content. A new current-use instruction must be recorded as such; it does not erase an old snapshot mismatch, authorize future versions, or make an unknown version verified.
 
 Source approval and drafting approval are different decisions. Record the latter in `PROJECT_BRIEF.md` and `provenance_ledger.md`; a source decision does not authorize the final deliverable.
 
