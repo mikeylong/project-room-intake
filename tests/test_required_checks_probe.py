@@ -2,7 +2,7 @@
 import sys
 import unittest
 
-FAIL_VERSION = (3, 11)
+FAIL_VERSION = (3, 12)
 
 
 class RequiredChecksProbe(unittest.TestCase):
